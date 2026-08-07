@@ -2,24 +2,41 @@
 title: "Relatório Classificação"
 author: "Danilo Pereira Mori"
 date: "2026-07-27"
-output: word_document
+output: 
+    bookdown::word_document2: 
+        fig_caption: true              
+        toc: true                      
+        toc_depth: 3                   
+        number_sections: true          
+        keep_md: false
+    bookdown::pdf_document2: 
+        toc: true                      
+        toc_depth: 3                    
+        number_sections: true          
+        latex_engine: xelatex
+        keep_tex: false
 editor_options: 
   chunk_output_type: console
 ---
 
-```{r}
+```{r setup, message=TRUE,warning=TRUE, echo=FALSE, cache = FALSE, include=TRUE, eval=TRUE}
+knitr::opts_chunk$set(echo = FALSE,eval = TRUE,message = FALSE,warning = FALSE,cache=TRUE,include=TRUE,
+                      fig.pos = "H", fig.show = "hold",
+                      dpi = 200)
+library(magrittr)
 library(tidyverse)
-df_ad <- read_csv2("G:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/tab_tudo_RR.csv")
+library(officer)
+library(flextable)
+df_ad0 <- read_csv2("G:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/tab_tudo_RR.csv")
 ```
 
 
-## Tratamento inicial dos dados
+# Initial data processing
 
-Classificação das predições em Verdadeiro Positivo (VP), Verdadeiro Negativo (VN), Falso Positivo (FP), Falso Negativo (FN).
+Classification of predictions into True Positive (TP), True Negative (TN), False Positive (FP), and False Negative (FN).
 
-
-```{r tratamento inicial dos dados}
-df_ad <- mutate(df_ad,classRR = ifelse(is.na(RR),0,1)) %>%
+```{r tratamento inicial dos dados, echo=TRUE}
+df_ad <- mutate(df_ad0,classRR = ifelse(is.na(RR),0,1)) %>%
     filter(id_key %in% c("RR_casos","RR_Mdn","RR_Mdn_mv","RR_obs")) %>%
     select(COD_CIR,data,id,classRR) %>%
     pivot_wider(names_from=id,values_from=classRR) %>%
@@ -45,8 +62,7 @@ df_ad <- mutate(df_ad,classRR = ifelse(is.na(RR),0,1)) %>%
 
 ## Métricas de classificação
 
-```{r tabela com a descricao das metricas}
-library(flextable)
+```{r tab-descricao-metricas, echo=FALSE}
 tb_metrics <- tibble(
   `Metric` = c(
     "Sensitivity",
@@ -88,24 +104,36 @@ tb_metrics <- tibble(
     "Values close to 1 indicate excellent discriminatory performance."
   )
 )
-ft_metricas <-
+#
+ft_metricas <- 
   flextable(tb_metrics) |>
   theme_booktabs() |>
-  autofit() |>
+  # Tamanho e fonte
+  fontsize(size = 10, part = "all") |>
+  font(fontname = "Arial", part = "all") |>
+  # Alinhamentos
   align(align = "center", part = "header") |>
   align(j = c("Metric", "Description", "Interpretation"),
         align = "left", part = "all") |>
   align(j = "Formula", align = "center", part = "all") |>
-  align(j = "Metric", align = "left", part = "header") |>
+  # Cabeçalho em negrito
   bold(part = "header") |>
-  fontsize(size = 10, part = "all") |>
-  set_caption("Binary classification performance metrics.")
+  # Cor de fundo do cabeçalho (opcional)
+  # bg(bg = "#f0f0f0", part = "header") |>
+  # Borda inferior do cabeçalho
+  # border(border = fp_border(color = "black", width = 1.5), 
+  #        part = "header", 
+  #        border.bottom = TRUE) |>
+  # Largura das colunas
+  set_table_properties(layout = "autofit") |>
+  # Caption sem bookmark
+  set_caption("Tabela 1: Binary classification performance metrics used to evaluate nowcasting.") %>% 
+  autofit()
 ft_metricas
 ```
 
 
-
-```{r criacao das metricas de classificao}
+```{r criacao das metricas de classificao, echo=TRUE}
 dfsumm <- df_ad %>%
     select(data,ends_with("_c")) %>%
     pivot_longer(ends_with("_c"),
@@ -131,12 +159,31 @@ dfsumm <- df_ad %>%
         BalancedAccuracy = (Sensitivity + Specificity)/2,
         Youden = Sensitivity + Specificity - 1
     )
-write_csv2()
+```
+
+```{r}
+dfsumm %>% 
+    select(data:FN) %>% 
+    pivot_longer(cols=FP:FN) %>% 
+    mutate(class_name = ifelse(name%in%c("TP","TN"),
+                               "Correct classifictation",
+                               "Wrong classifictation"),
+           class_name = factor(class_name,
+                               levels=c(
+                                   "Correct classifictation",
+                                   "Wrong classifictation")),
+           name2 = case_when(
+               grepl("N",name) ~ "RR < 1",
+               grepl("P",name) ~ "RR ≥ 1")
+           ) %>% 
+    ggplot(aes(x=data,y=value,shape=name2,color=name2)) +
+    geom_point() +
+    facet_grid(method~class_name)
 ```
 
 
-
-```{r resumo das métricas sumarizando pelas semanas epidmeiologicas}
+```{r resumo_das_metricas,echo=FALSE}
+write_csv2(dfsumm,file = "G:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/metricas_classificacao.csv")
 dftab <- dfsumm %>%  
     group_by(method) %>% 
     summarise(
@@ -156,7 +203,31 @@ dftab <- dfsumm %>%
             ),
         .groups = "drop"
         )
-
+ft_metricas <- 
+  flextable(dftab) |>
+  theme_booktabs() |>
+  # Tamanho e fonte
+  fontsize(size = 10, part = "all") |>
+  font(fontname = "Arial", part = "all") |>
+  # Alinhamentos
+  align(align = "center", part = "header") |>
+  # align(j = c("Metric", "Description", "Interpretation"),
+  #       align = "left", part = "all") |>
+  # align(j = "Formula", align = "center", part = "all") |>
+  # Cabeçalho em negrito
+  bold(part = "header") |>
+  # Cor de fundo do cabeçalho (opcional)
+  # bg(bg = "#f0f0f0", part = "header") |>
+  # Borda inferior do cabeçalho
+  # border(border = fp_border(color = "black", width = 1.5), 
+  #        part = "header", 
+  #        border.bottom = TRUE) |>
+  # Largura das colunas
+  set_table_properties(layout = "autofit") |>
+  # Caption sem bookmark
+  set_caption("Tabela 1: Binary classification performance metrics used to evaluate nowcasting.") %>% 
+  autofit()
+ft_metricas
 ```
 
 
@@ -172,15 +243,15 @@ dfp <- dfsumm %>% pivot_longer(Sensitivity:Youden) %>%
                                 "Youden"))
            ) %>% 
     ungroup()
-dfp %>% 
+p <- dfp %>% 
     filter(name %in% c("Sensitivity","Specificity","PPV","NPV")) %>% 
     ggplot(aes(x=data,y=value,color=method)) +
     scale_color_manual("",values=c(
         "Standard Bayesian prediction"="red",
         "Moving average of Bayesian predictions"="blue",
         "Naive baseline"="black")) +
-    geom_line() +
-    geom_point() +
+    geom_line(alpha=0.4) +
+    geom_point(alpha=0.4) +
     theme_light() +
     labs(y="",x="epidemiological week") +
     facet_wrap(~name,ncol=2) +
@@ -188,6 +259,40 @@ dfp %>%
     theme(legend.position="bottom",
           strip.text=element_text(color = "black",face = "bold"),
           strip.background = element_rect(fill="white",colour = "black"))
+ggsave(filename="G:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/metricas_clasificacao.jpg",
+       plot=p,
+       dpi=200,
+       width=12,
+       height=)
+```
 
+```{r}
+dfp <- dfsumm %>% pivot_longer(Sensitivity:Youden) %>% 
+    mutate(name=factor(name,
+                       levels=c("Sensitivity",
+                                "Specificity",
+                                "PPV",
+                                "NPV",
+                                "Accuracy",
+                                "BalancedAccuracy",
+                                "Youden"))
+           ) %>% 
+    ungroup()
+p <- dfp %>% 
+    filter(name %in% c("PPV","NPV","Accuracy")) %>% 
+    ggplot(aes(x=data,y=value,color=method)) +
+    scale_color_manual("",values=c(
+        "Standard Bayesian prediction"="red",
+        "Moving average of Bayesian predictions"="blue",
+        "Naive baseline"="black")) +
+    geom_line(alpha=0.4) +
+    geom_point(alpha=0.4) +
+    theme_light() +
+    labs(y="",x="epidemiological week") +
+    facet_wrap(~name,ncol=3) +
+    scale_y_continuous(expand=c(0,0.01)) +
+    theme(legend.position="bottom",
+          strip.text=element_text(color = "black",face = "bold"),
+          strip.background = element_rect(fill="white",colour = "black"))
 ```
 
