@@ -193,8 +193,7 @@ ft_metricas
 
 ## General classification
 
-
-```{r fig1, include=FALSE,eval=FALSE}
+```{r fig1, include=TRUE,eval=TRUE ,fig.width=14,fig.height=10}
 lp <- list()
 lp[[1]] <- dfsumm %>% 
     select(data:FN) %>% 
@@ -202,8 +201,12 @@ lp[[1]] <- dfsumm %>%
     mutate(name=factor(name,
                        levels=c("TP","TN","FP","FN"),
                        labels=c(
-                           
-                       ))
+                           "True Positive (TP)",
+                           "True Negative (TN)",
+                           "False Positive (FP)",
+                           "False Negative (FN)"
+                           )
+                       )
            ) %>% 
     # mutate(class_name = ifelse(name%in%c("TP","TN"),
     #                            "Correct classifictation",
@@ -248,12 +251,9 @@ lp[[2]] <- df_ad %>%
     facet_wrap(~facet_label) +
     theme_bw()
 library(patchwork)
-wrap_plots(lp[2:1],ncol=2) +
+wrap_plots(lp[2:1],ncol=1) +
     plot_annotation(tag_levels = 'A')
 ```
-
-
-
 
 
 
@@ -343,6 +343,12 @@ ggsave(filename="G:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/arti
        height=10)
 p
 ```
+
+
+
+
+
+
 
 ```{r}
 dfp <- dfsumm %>% pivot_longer(Sensitivity:Youden) %>% 
