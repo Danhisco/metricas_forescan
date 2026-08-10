@@ -1,11 +1,11 @@
 ---
-title: "Relatório Classificação"
-author: "Danilo Pereira Mori"
-date: "2026-07-27"
+title: ""
+author: ""
+date: ""
 output: 
     bookdown::word_document2: 
         fig_caption: true              
-        toc: true                      
+        toc: false                      
         toc_depth: 3                   
         number_sections: true          
         keep_md: false
@@ -193,7 +193,7 @@ ft_metricas
 
 ## General classification
 
-```{r fig1, include=TRUE,eval=TRUE ,fig.width=14,fig.height=10}
+```{r fig1, include=TRUE,eval=TRUE ,fig.width=10,fig.height=10}
 lp <- list()
 lp[[1]] <- dfsumm %>% 
     select(data:FN) %>% 
@@ -227,7 +227,8 @@ lp[[1]] <- dfsumm %>%
     geom_line() +
     facet_wrap(~name,nrow=2) +
     labs(y="",x="") +
-    theme_bw()
+    theme_bw() +
+    theme(legend.position="bottom")
 lp[[2]] <- df_ad %>% 
     group_by(data) %>% 
     summarise(SIG = sum(casos==1),nSIG=sum(casos==0)) %>% 
@@ -249,7 +250,8 @@ lp[[2]] <- df_ad %>%
                            ) +
     labs(y="",x="") +
     facet_wrap(~facet_label) +
-    theme_bw()
+    theme_bw() +
+    theme(legend.position="bottom")
 library(patchwork)
 wrap_plots(lp[2:1],ncol=1) +
     plot_annotation(tag_levels = 'A')
@@ -259,7 +261,7 @@ wrap_plots(lp[2:1],ncol=1) +
 
 ## Method performance evaluation metrics
 
-```{r resumo_das_metricas,echo=FALSE}
+```{r resumo-das-metricas,echo=FALSE}
 dftab <- dfsumm %>%  
     group_by(method) %>% 
     summarise(
@@ -288,20 +290,8 @@ ft_metricas <-
   font(fontname = "Arial", part = "all") |>
   # Alinhamentos
   align(align = "center", part = "header") |>
-  # align(j = c("Metric", "Description", "Interpretation"),
-  #       align = "left", part = "all") |>
-  # align(j = "Formula", align = "center", part = "all") |>
-  # Cabeçalho em negrito
   bold(part = "header") |>
-  # Cor de fundo do cabeçalho (opcional)
-  # bg(bg = "#f0f0f0", part = "header") |>
-  # Borda inferior do cabeçalho
-  # border(border = fp_border(color = "black", width = 1.5), 
-  #        part = "header", 
-  #        border.bottom = TRUE) |>
-  # Largura das colunas
   set_table_properties(layout = "autofit") |>
-  # Caption sem bookmark
   set_caption("Table 2: Sumamry of the method evaluation performance metrics used to evaluate nowcasting.") %>% 
   autofit()
 ft_metricas
