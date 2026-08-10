@@ -183,7 +183,7 @@ ft_metricas <-
   # Largura das colunas
   set_table_properties(layout = "autofit") |>
   # Caption sem bookmark
-  set_caption("Table 1: Binary classification performance metrics used to evaluate nowcasting.") %>% 
+  set_caption("Binary classification performance metrics used to evaluate nowcasting.") %>% 
   autofit()
 ft_metricas
 ```
@@ -225,6 +225,10 @@ lp[[1]] <- dfsumm %>%
     ggplot(aes(x=data,y=value,color=method)) +
     geom_point() +
     geom_line() +
+    scale_color_manual("",values=c(
+        "Standard Bayesian prediction"="red",
+        "Moving average of Bayesian predictions"="blue",
+        "Naive baseline"="black")) +
     facet_wrap(~name,nrow=2) +
     labs(y="",x="") +
     theme_bw() +
@@ -292,7 +296,7 @@ ft_metricas <-
   align(align = "center", part = "header") |>
   bold(part = "header") |>
   set_table_properties(layout = "autofit") |>
-  set_caption("Table 2: Sumamry of the method evaluation performance metrics used to evaluate nowcasting.") %>% 
+  set_caption("Sumamry of the method evaluation performance metrics used to evaluate nowcasting.") %>% 
   autofit()
 ft_metricas
 ```
