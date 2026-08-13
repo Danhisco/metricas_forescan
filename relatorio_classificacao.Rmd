@@ -28,15 +28,15 @@ library(magrittr)
 library(tidyverse)
 library(officer)
 library(flextable)
-df_ad0 <- read_csv2("G:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/tab_tudo_RR.csv")
+df_ad0 <- read_csv2("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/metricas_forescan-main/tab_tudo_RR.csv")
 
 # classificação inicial das predições
 f_class <- \(pred, truth) {
   case_when(
     truth == pred & truth == 1 ~ "TP",
     truth == pred & truth == 0 ~ "TN",
-    truth != pred & truth == 1 ~ "FP",
-    truth != pred & truth == 0 ~ "FN"
+    truth != pred & truth == 1 ~ "FN",
+    truth != pred & truth == 0 ~ "FP"
   )
 }
 df_ad <- df_ad0 %>% 
@@ -58,33 +58,48 @@ df_ad <- df_ad0 %>%
 
 # métricas de classificação de predição
 dfsumm <- df_ad %>%
-    select(data,ends_with("_c")) %>%
-    pivot_longer(ends_with("_c"),
-                 names_to = "method",
-                 values_to = "classe") %>%
-    group_by(data) %>%
-    count(method, classe) %>%
-    pivot_wider(names_from = classe,
-                values_from = n,
-                values_fill = 0) %>%
-    mutate(
-        method = factor(method,
-                        levels=c("Mdn_c","Mdn_mv_c","obs_c"),
-                        labels=c(
-                            "Standard Bayesian prediction",
-                            "Moving average of Bayesian predictions",
-                            "Naive baseline")),
-        Sensitivity = TP/(TP+FN),
-        Specificity = TN/(TN+FP),
-        PPV = TP/(TP+FP),
-        NPV = TN/(TN+FN),
-        Accuracy = (TP+TN)/(TP+TN+FP+FN),
-        BalancedAccuracy = (Sensitivity + Specificity)/2,
-        Youden = Sensitivity + Specificity - 1
-    )
-write_csv2(dfsumm,file = "G:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/metricas_classificacao.csv")
+  select(data,ends_with("_c")) %>%
+  pivot_longer(ends_with("_c"),
+               names_to = "method",
+               values_to = "classe") %>%
+  group_by(data) %>%
+  count(method, classe) %>%
+  pivot_wider(names_from = classe,
+              values_from = n,
+              values_fill = 0) %>%
+  mutate(
+    method = factor(method,
+                    levels=c("Mdn_c","Mdn_mv_c","obs_c"),
+                    labels=c(
+                        "Standard Bayesian prediction",
+                        "Moving average of Bayesian predictions",
+                        "Naive baseline")),
+    Sensitivity = TP/(TP+FN),
+    TruePositiveRate = TP/(TP+FN), # % of real pos correctly identified
+    FalsePositiveRate = FP/(FP+TN), # % of real neg incorrectly identified
+    Specificity = TN/(TN+FP),
+    PPV = TP/(TP+FP),
+    NPV = TN/(TN+FN),
+    Accuracy = (TP+TN)/(TP+TN+FP+FN),
+    BalancedAccuracy = (Sensitivity + Specificity)/2,
+    Youden = Sensitivity + Specificity - 1)
+dfsumm2 <- mutate(dfsumm,
+                  PPV = ifelse(is.na(PPV),0,PPV))
+write_csv2(dfsumm,file = paste0(getwd(),"/","dfsumm.csv"))
+df_aud <- inner_join(
+  select(dfsumm,data:Accuracy),
+  group_by(df_ad,data) %>% 
+    summarise(Real.Pos = sum(casos==1),
+              Real.Neg=sum(casos==0)),
+  by="data"
+)
+#
 ```
-
+```{r}
+df_aud %>% 
+  filter(PPV==1,grepl("Naive",method)) %>% 
+  select(method:Sensitivity,PPV,Real.Pos,Real.Neg)
+```
 
 # Context
 
@@ -193,10 +208,10 @@ ft_metricas
 
 ## General classification
 
-```{r fig1, include=TRUE,eval=TRUE ,fig.width=10,fig.height=10}
+```{r fig1, include=TRUE,eval=TRUE ,fig.width=10,fig.height=14}
 lp <- list()
-lp[[1]] <- dfsumm %>% 
-    select(data:FN) %>% 
+lp[[1]] <- dfsumm2 %>% 
+    select(data:FP) %>% 
     pivot_longer(cols=FP:FN) %>% 
     mutate(name=factor(name,
                        levels=c("TP","TN","FP","FN"),
@@ -223,16 +238,20 @@ lp[[1]] <- dfsumm %>%
     # geom_point() +
     # facet_grid(method~class_name)
     ggplot(aes(x=data,y=value,color=method)) +
-    geom_point() +
-    geom_line() +
+    geom_point(size=1.12,alpha=0.5) +
+    geom_line(linewidth=1.15,alpha=0.5) +
     scale_color_manual("",values=c(
         "Standard Bayesian prediction"="red",
         "Moving average of Bayesian predictions"="blue",
         "Naive baseline"="black")) +
-    facet_wrap(~name,nrow=2) +
+    facet_wrap(~name,nrow=2,scales="free") +
     labs(y="",x="") +
     theme_bw() +
-    theme(legend.position="bottom")
+    theme(legend.position="bottom",
+          legend.margin = margin(t = -4, b = 0, unit = "pt"),
+          legend.box.margin = margin(t = -10, b = 0, unit = "pt"),
+          legend.box.spacing = unit(0, "pt"),
+          strip.background = element_rect(fill="white",colour = "black"))
 lp[[2]] <- df_ad %>% 
     group_by(data) %>% 
     summarise(SIG = sum(casos==1),nSIG=sum(casos==0)) %>% 
@@ -243,22 +262,81 @@ lp[[2]] <- df_ad %>%
                              "RR > 1",
                              "RR ≤ 1")
                          ),
-           facet_label = "True number of CIR"
+           facet_label = "Real number of CIR"
            ) %>% 
     ggplot(aes(x=data,y=value,color=name)) +
         geom_point() +
         geom_line() +
         scale_color_manual("",
-                           values=c("RR > 1" = "red",
-                                    "RR ≤ 1" = "blue")
+                           values=c("RR > 1" = "orange",
+                                    "RR ≤ 1" = "darkgreen")
                            ) +
     labs(y="",x="") +
     facet_wrap(~facet_label) +
     theme_bw() +
-    theme(legend.position="bottom")
+    theme(legend.position="bottom",
+          legend.margin = margin(t = -5, b = 0, unit = "pt"),
+          legend.box.margin = margin(t = -10, b = 0, unit = "pt"),
+          legend.box.spacing = unit(0, "pt"),
+          strip.background = element_rect(fill="white",colour = "black"))
+dfp <- dfsumm2 %>% pivot_longer(Sensitivity:Youden) %>% 
+    mutate(name=factor(name,
+                       levels=c("Sensitivity",
+                                "Specificity",
+                                "PPV",
+                                "NPV",
+                                "Accuracy",
+                                "BalancedAccuracy",
+                                "Youden"))
+           ) %>% 
+    ungroup()
+lp[[3]] <- dfp %>% 
+  filter(name %in% c("PPV","NPV",
+                     "Sensitivity",
+                     "Specificity")) %>% 
+  mutate(name = factor(name,
+                       levels=c("Sensitivity","Specificity",
+                                "PPV","NPV"),
+                       labels=c(
+                         "Sensitivity = TP / (TP+FN)",
+                         "Specificity = TN / (TN+FP)",
+                         "PPV = TP / (TP + FP)",
+                         "NPV = NP / (NP + FP)"
+                         )
+                       )
+         ) %>% 
+  ggplot(aes(x=data,y=value,color=method)) +
+  scale_color_manual("",values=c(
+    "Standard Bayesian prediction"="red",
+    "Moving average of Bayesian predictions"="blue",
+    "Naive baseline"="black")) +
+  geom_line(alpha=0.5,linewidth = 1.5) +
+  geom_point(alpha=0.5,size = 1.5) +
+  theme_bw() +
+  labs(y="",x="epidemiological week") +
+  facet_wrap(~name,ncol=2) +
+  scale_y_continuous(expand=c(0,0.01)) +
+  theme(legend.position="none",
+        strip.text=element_text(color = "black",face = "bold"),
+        strip.background = element_rect(fill="white",colour = "black"))
 library(patchwork)
-wrap_plots(lp[2:1],ncol=1) +
+p <- wrap_plots(lp[c(2:1,3)],
+                ncol=1,
+                  heights = c(1, 2, 2)
+                ) +
     plot_annotation(tag_levels = 'A')
+ vpath <- ggsave(filename = paste0(getwd(),"/figuras_e_relatorios/figura_ABC_completa.png"),
+        dpi=200,
+        width=11,
+        height=10)
+p
+library(magick)
+f_img <- \(imgpath){
+    vimg <- image_read(imgpath) %>%
+        image_trim()
+    image_write(vimg,imgpath)
+}
+f_img(vpath)
 ```
 
 
@@ -266,13 +344,13 @@ wrap_plots(lp[2:1],ncol=1) +
 ## Method performance evaluation metrics
 
 ```{r resumo-das-metricas,echo=FALSE}
-dftab <- dfsumm %>%  
+dftab <- dfsumm2 %>%  
     group_by(method) %>% 
     summarise(
-        `Sensitivity availability, n (%)` =
-            sprintf("%d (%.1f%%)",
-                    sum(!is.na(Sensitivity)),
-                    100 * mean(!is.na(Sensitivity))),
+        # `Sensitivity availability, n (%)` =
+        #     sprintf("%d (%.1f%%)",
+        #             sum(!is.na(Sensitivity)),
+        #             100 * mean(!is.na(Sensitivity))),
         across(
             c(Sensitivity,
               Specificity,
@@ -315,7 +393,7 @@ dfp <- dfsumm %>% pivot_longer(Sensitivity:Youden) %>%
            ) %>% 
     ungroup()
 p <- dfp %>% 
-    filter(name %in% c("Sensitivity","Specificity","PPV","NPV")) %>% 
+    filter(name %in% c("PPV","NPV")) %>% 
     ggplot(aes(x=data,y=value,color=method)) +
     scale_color_manual("",values=c(
         "Standard Bayesian prediction"="red",
@@ -327,10 +405,10 @@ p <- dfp %>%
     labs(y="",x="epidemiological week") +
     facet_wrap(~name,ncol=2) +
     scale_y_continuous(expand=c(0,0.01)) +
-    theme(legend.position="bottom",
+    theme(legend.position="none",
           strip.text=element_text(color = "black",face = "bold"),
           strip.background = element_rect(fill="white",colour = "black"))
-ggsave(filename="G:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/metricas_clasificacao.jpg",
+ggsave(filename=paste0(getwd(),"/fig2.png"),
        plot=p,
        dpi=200,
        width=12,
