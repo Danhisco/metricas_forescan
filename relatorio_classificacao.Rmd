@@ -455,7 +455,7 @@ painel_final
 
 
 
-## General classification
+## Figure 2 from main text: SaTScan-based risk classification of CIRs
 
 ```{r fig1, include=TRUE,eval=TRUE ,fig.width=10,fig.height=14}
 lp <- list()
@@ -725,26 +725,6 @@ pfinal <- image_append(c(pfinal,limg[[4]]),stack=TRUE)
 pfinal
 image_write(pfinal,"figuras_e_relatorios/figura_ABC_completa.png")
 # 
-#     
-#     
-# library(patchwork)
-# # p <- wrap_plots(lp[c(2:1,3)],
-# #                 ncol=1,
-# #                   heights = c(1, 2, 2)
-# #                 ) +
-# #     plot_annotation(tag_levels = 'A')
-# p <- wrap_plots(lp) +
-#   plot_layout(design = "
-#     AB
-#     CC
-#     DD
-#   ") 
-# vpath <- ggsave(filename = "figuras_e_relatorios/figura_ABC_completa2.png",
-#                 plot=p,
-#                 dpi=200,
-#                 width=11,
-#                 height=10)
-# p
 library(magick)
 f_img <- \(imgpath){
     vimg <- image_read(imgpath) %>%
@@ -753,6 +733,56 @@ f_img <- \(imgpath){
 }
 f_img("figuras_e_relatorios/figura_ABC_completa.png")
 ```
+
+
+## Figure 3 from main text: comparison between model performance and SaTScan-based risk classification of CIRs
+
+
+```{r}
+dfp_sepi <- inner_join(
+    dfwis_sepi %>% 
+        select(base,WIS:superprev),
+    dfsumm %>% 
+        select(data:method,contains("Rate")) %>% 
+        filter(!grepl("Naive",method)),
+    by=c("base"="data")
+    )
+#
+dfp_sepi %>% 
+    ggplot(aes(x=WIS,y=TruePositiveRate)) +
+    geom_point() +
+    geom_smooth(se=FALSE,method="lm") +
+    facet_wrap(~method,ncol=2)
+
+
+dfp_cir <- inner_join(
+    dfwis_cir %>% 
+        st_drop_geometry() %>% 
+        select(cod_space,WIS:subprev),
+    dfsumm_cir %>% 
+        st_drop_geometry() %>% 
+        select(cod_space,method,contains("Rate")) %>% 
+        filter(!grepl("Naive",method))
+    ) %>% 
+    select(-cod_space) %>% 
+    mutate(method=droplevels(method))
+
+f_cor <- \(dfi){
+    cor(select(dfi,-method),
+        method="spearman",
+        use = "pairwise.complete.obs")
+}
+ldf <- split(dfp_cir,dfp_cir$method) %>% lapply(.,f_cor)
+
+
+
+dfp_cir %>% 
+    ggplot(aes(x=WIS,y=FalsePositiveRate)) +
+    geom_point() +
+    geom_smooth(se=FALSE,method="lm") +
+    facet_wrap(~method,ncol=2)
+```
+
 
 
 
