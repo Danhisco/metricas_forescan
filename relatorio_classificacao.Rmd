@@ -26,8 +26,23 @@ knitr::opts_chunk$set(echo = FALSE,eval = TRUE,message = FALSE,warning = FALSE,c
 # pacotes e dados de entrada
 library(magrittr)
 library(tidyverse)
+library(readxl)
+library(sf)
 library(officer)
 library(flextable)
+####### dados gerais #########
+# cir <- cir |> select(Cod6, RS_CIR, COD_CIR)|> rename(CO_MUN_RES=Cod6)
+mapa_cir<-read_sf("~/Documentos/projeto_DOC/SRAG/00_dados_auxiliares/CIR/CIR_UTM.shp")
+names(mapa_cir) <- tolower(names(mapa_cir))
+mapa_cir <- rename(mapa_cir,cod_space=cod_cir)
+
+# WIS e cobertura
+dfwis_cir <- read_csv("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/pasta_tati_forescan/Indicadores/indicador_por_municipio.csv") %>% 
+  select(-1)
+dfwis_sepi <- read_csv("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/pasta_tati_forescan/Indicadores/indicador_base.csv") %>% 
+  select(-1)
+
+# classificação do satscan
 df_ad0 <- read_csv2("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/metricas_forescan-main/tab_tudo_RR.csv")
 
 # classificação inicial das predições
@@ -94,6 +109,61 @@ df_aud <- inner_join(
   by="data"
 )
 #
+#
+#############################################################################
+################# padronização de nomes e joins com objetos espaciais #######
+#############################################################################
+clean_cir <- function(x) {
+  x %>%
+    # 1. Remove acentos (ex: "Jundiaí" -> "Jundiai")
+    stringi::stri_trans_general(id = "Latin-ASCII") %>%
+    # 2. Converte tudo para maiúsculas (ex: "Jundiai" -> "JUNDIAI")
+    toupper() %>%
+    # 3. Remove múltiplos espaços em branco, se houver
+    stringr::str_squish()
+}
+mapa_cir$rs_cir <- clean_cir(mapa_cir$rs_cir)
+# incluindo o shapefile nas métricas da predição do modelo bayesiano
+## no 
+dfwis_cir$cir <- clean_cir(dfwis_cir$cir)
+vwis <- unique(dfwis_cir$rs_cir)
+vmapa <- unique(mapa_cir$rs_cir)
+base::setdiff(vwis,vmapa)
+
+
+dfwis_cir <- left_join(mapa_cir,dfwis_cir,by=c("rs_cir"="cir"))
+#@-------- criação das métricas de confusão por localidade ------@#
+
+dfsumm_cir <- df_ad %>%
+  select(COD_CIR,ends_with("_c")) %>%
+  pivot_longer(ends_with("_c"),
+               names_to = "method",
+               values_to = "classe") %>%
+  group_by(COD_CIR) %>%
+  count(method, classe) %>%
+  pivot_wider(names_from = classe,
+              values_from = n,
+              values_fill = 0) %>%
+  mutate(
+    method = factor(method,
+                    levels=c("Mdn_c","Mdn_mv_c","obs_c"),
+                    labels=c(
+                        "Standard Bayesian prediction",
+                        "Moving average of Bayesian predictions",
+                        "Naive baseline")),
+    TruePositiveRate = TP/(TP+FN), # % of real pos correctly identified
+    FalsePositiveRate = FP/(FP+TN), # % of real neg incorrectly identified
+    Specificity = TN/(TN+FP),
+    PPV = TP/(TP+FP),
+    NPV = TN/(TN+FN),
+    Accuracy = (TP+TN)/(TP+TN+FP+FN)) %>% 
+  mutate(
+    PPV = ifelse(is.na(PPV),0,PPV),
+    TruePositiveRate = ifelse(is.na(TruePositiveRate),0,TruePositiveRate),
+    BalancedAccuracy = (TruePositiveRate + Specificity)/2,
+    Youden = TruePositiveRate + Specificity - 1
+  )
+dfsumm_cir <- left_join(mapa_cir,dfsumm_cir,by=c("cod_space"="COD_CIR"))
 ```
 ```{r}
 df_aud %>% 
@@ -206,53 +276,218 @@ ft_metricas
 
 # Results
 
+## Figure 1 from main text
+
+Model evaluation metrics: cover percentage and WIS decomposition
+
+```{r}
+library(ggspatial)
+library(magick)
+library(patchwork)
+library(cowplot)
+f_imgtoggplot <- function(caminho_imagem, largura_px = 2000) {
+  img <- image_read(caminho_imagem) %>% 
+    image_trim() %>% 
+    # Aumenta/padroniza a largura da imagem mantendo a proporção
+    image_resize(geometry_size_pixels(width = largura_px))
+  
+  ggdraw() + draw_image(img)
+}
+# primeiro cobertura e depois 
+lp <- list()
+# figura construida pela Tatiana e adaptada aqui:
+vsepi <- dfwis_sepi$base %>% unique %>% sort() %>% as.character()
+dfp <- dfwis_sepi %>%
+  select(base, cob50, cob95) %>% 
+  pivot_longer(
+    cols = c(cob50, cob95), 
+    names_to = "cobertura", 
+    values_to = "valor"
+  ) %>% 
+  mutate(
+    sepi = as.character(base),
+    sepi = factor(sepi,levels=vsepi),
+    cobertura = factor(
+      cobertura, 
+      levels = c("cob50","cob95"),
+      labels = c("50%","95%")
+    )
+  )
+  #f_imgtoggplot("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/pasta_tati_forescan/Indicadores/coverage_base.png")
+lp[[1]] <- dfp %>%
+  ggplot(aes(x = sepi, y = valor, fill = cobertura)) +
+    geom_col(position = "identity",alpha=0.85) +
+    scale_fill_manual(
+      values = c(
+        "50%" = "darkblue",
+        "95%" = "#33CCFF" 
+      )
+    ) +
+  geom_hline(yintercept = c(50,95),color="darkred",linetype=2) +
+    labs(
+      x = "",
+      y = "Empirical coverage",
+      fill = "Prediction interval"
+    ) +
+    theme_bw() +
+    theme(
+      text=element_text(size=10),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1,face="bold"),
+      legend.position = "top",
+      strip.background = element_rect(fill = "white")
+    )
+# figura com os mapas por cobertura
+lp[[2]] <- dfwis_cir %>% 
+  select(starts_with("cob")) %>% 
+  pivot_longer(starts_with("cob")) %>%
+  mutate(name=factor(name,
+                     levels=c("cob50","cob95"),
+                     labels=c("Pred. Int. 50%","Pred. Int. 95%"))) %>% 
+  ggplot(aes(fill=value)) +
+    geom_sf(color="white") +
+    scale_fill_viridis_c("Empirical coverage (%)") +
+    facet_wrap(~name,ncol=2) +
+  # 1. Ajuste dos eixos para não ter sobras (margens zeradas)
+    coord_sf(expand = FALSE) +
+    # 2. Adiciona a Barra de Escala (canto inferior esquerdo)
+    annotation_scale(
+      location = "bl", 
+      width_hint = 0.3,
+      style = "ticks"
+    ) +
+    # 3. Adiciona o Norte (canto superior direito)
+    annotation_north_arrow(
+      location = "tr", 
+      which_north = "true",
+      pad_x = unit(0.15, "in"), 
+      pad_y = unit(0.15, "in"),
+      height = unit(0.8, "cm"),  # Reduz o tamanho da seta
+      width = unit(0.8, "cm"),
+      style = north_arrow_orienteering(
+        fill = c("black", "white"),
+        line_col = "black",
+        text_size = 7
+        )
+      ) +
+    # 4. Manutenção do tema limpo para mapas
+    theme_bw() +
+    theme(
+      legend.position="top",
+      panel.grid = element_blank(),
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      strip.background = element_rect(fill = "white"),
+      strip.text = element_text(face = "bold",size=12),
+      text = element_text(size=10)
+    )
+lp[[3]] <- f_imgtoggplot("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/pasta_tati_forescan/Indicadores/wis_base.png")
+lp[[4]] <- dfwis_cir %>% 
+  select(dispersao:subprev) %>% 
+  pivot_longer(dispersao:subprev) %>% 
+  mutate(name = factor(name,
+                       levels=c("dispersao","subprev"),
+                       labels=c("spread","underprediction"))) %>% 
+  ggplot(aes(fill=log(value))) +
+    geom_sf(color="white") +
+    scale_fill_gradient(
+      low = "#568203", 
+      high = "red",
+      name = "log(WIS component)"
+      ) +
+    facet_wrap(~name,nrow=1) +
+    # 1. Ajuste dos eixos para não ter sobras (margens zeradas)
+    coord_sf(expand = FALSE) +
+    # 2. Adiciona a Barra de Escala (canto inferior esquerdo)
+    annotation_scale(
+      location = "bl", 
+      width_hint = 0.3,
+      style = "ticks"
+    ) +
+    # 3. Adiciona o Norte (canto superior direito)
+    annotation_north_arrow(
+      location = "tr", 
+      which_north = "true",
+      pad_x = unit(0.15, "in"), 
+      pad_y = unit(0.15, "in"),
+      height = unit(0.8, "cm"),  # Reduz o tamanho da seta
+      width = unit(0.8, "cm"),
+      style = north_arrow_orienteering(
+        fill = c("black", "white"),
+        line_col = "black",
+        text_size = 7
+        )
+      ) +
+    # 4. Manutenção do tema limpo para mapas
+    theme_bw() +
+    theme(
+      legend.position="top",
+      panel.grid = element_blank(),
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      strip.background = element_rect(fill = "white"),
+      strip.text = element_text(face = "bold",size=12),
+      text = element_text(size=10)
+    )
+painel_final <- wrap_plots(
+  lp[c(1,3,2,4)], 
+  ncol = 2, 
+  widths = c(1, 1)
+  ) + 
+  plot_annotation(tag_levels = 'A')
+vpath <- ggsave(filename = "metricas_forescan-main/figuras_e_relatorios/fig1_md_perf.png",
+                plot=painel_final,
+                dpi=200,
+                width=14,
+                height=10)
+library(magick)
+f_img <- \(imgpath){
+    vimg <- image_read(imgpath) %>%
+        image_trim()
+    image_write(vimg,imgpath)
+}
+f_img(vpath)
+
+```
+
+
+
+
+
 ## General classification
 
 ```{r fig1, include=TRUE,eval=TRUE ,fig.width=10,fig.height=14}
 lp <- list()
-lp[[1]] <- dfsumm2 %>% 
-    select(data:FP) %>% 
-    pivot_longer(cols=FP:FN) %>% 
-    mutate(name=factor(name,
-                       levels=c("TP","TN","FP","FN"),
-                       labels=c(
-                           "True Positive (TP)",
-                           "True Negative (TN)",
-                           "False Positive (FP)",
-                           "False Negative (FN)"
-                           )
-                       )
-           ) %>% 
-    # mutate(class_name = ifelse(name%in%c("TP","TN"),
-    #                            "Correct classifictation",
-    #                            "Wrong classifictation"),
-    #        class_name = factor(class_name,
-    #                            levels=c(
-    #                                "Correct classifictation",
-    #                                "Wrong classifictation")),
-    #        name2 = case_when(
-    #            grepl("N",name) ~ "RR < 1",
-    #            grepl("P",name) ~ "RR ≥ 1")
-    #        ) %>% 
-    # ggplot(aes(x=data,y=value,shape=name2,color=name2)) +
-    # geom_point() +
-    # facet_grid(method~class_name)
-    ggplot(aes(x=data,y=value,color=method)) +
-    geom_point(size=1.12,alpha=0.5) +
-    geom_line(linewidth=1.15,alpha=0.5) +
-    scale_color_manual("",values=c(
-        "Standard Bayesian prediction"="red",
-        "Moving average of Bayesian predictions"="blue",
-        "Naive baseline"="black")) +
-    facet_wrap(~name,nrow=2,scales="free") +
-    labs(y="",x="") +
-    theme_bw() +
-    theme(legend.position="bottom",
-          legend.margin = margin(t = -4, b = 0, unit = "pt"),
-          legend.box.margin = margin(t = -10, b = 0, unit = "pt"),
-          legend.box.spacing = unit(0, "pt"),
-          strip.background = element_rect(fill="white",colour = "black"))
-lp[[2]] <- df_ad %>% 
+# lp[[1]] <- dfsumm2 %>% 
+#     select(data:FP) %>% 
+#     pivot_longer(cols=FP:FN) %>% 
+#     mutate(name=factor(name,
+#                        levels=c("TP","TN","FP","FN"),
+#                        labels=c(
+#                            "True Positive (TP)",
+#                            "True Negative (TN)",
+#                            "False Positive (FP)",
+#                            "False Negative (FN)"
+#                            )
+#                        )
+#            ) %>% 
+#     ggplot(aes(x=data,y=value,color=method)) +
+#     geom_point(size=1.12,alpha=0.5) +
+#     geom_line(linewidth=1.15,alpha=0.5) +
+#     scale_color_manual("",values=c(
+#         "Standard Bayesian prediction"="red",
+#         "Moving average of Bayesian predictions"="blue",
+#         "Naive baseline"="black")) +
+#     facet_wrap(~name,nrow=2,scales="free") +
+#     labs(y="",x="") +
+#     theme_bw() +
+#     theme(legend.position="bottom",
+#           legend.margin = margin(t = -4, b = 0, unit = "pt"),
+#           legend.box.margin = margin(t = -10, b = 0, unit = "pt"),
+#           legend.box.spacing = unit(0, "pt"),
+#           strip.background = element_rect(fill="white",colour = "black"))
+lp[[1]] <- df_ad %>% 
     group_by(data) %>% 
     summarise(SIG = sum(casos==1),nSIG=sum(casos==0)) %>% 
     pivot_longer(-data) %>% 
@@ -279,32 +514,22 @@ lp[[2]] <- df_ad %>%
           legend.box.margin = margin(t = -10, b = 0, unit = "pt"),
           legend.box.spacing = unit(0, "pt"),
           strip.background = element_rect(fill="white",colour = "black"))
-dfp <- dfsumm2 %>% pivot_longer(Sensitivity:Youden) %>% 
+dfp <- dfsumm2 %>% 
+  select(data:method,contains("Rate")) %>% 
+  pivot_longer(cols=contains("Rate")) %>% 
     mutate(name=factor(name,
-                       levels=c("Sensitivity",
-                                "Specificity",
-                                "PPV",
-                                "NPV",
-                                "Accuracy",
-                                "BalancedAccuracy",
-                                "Youden"))
-           ) %>% 
-    ungroup()
-lp[[3]] <- dfp %>% 
-  filter(name %in% c("PPV","NPV",
-                     "Sensitivity",
-                     "Specificity")) %>% 
-  mutate(name = factor(name,
-                       levels=c("Sensitivity","Specificity",
-                                "PPV","NPV"),
-                       labels=c(
-                         "Sensitivity = TP / (TP+FN)",
-                         "Specificity = TN / (TN+FP)",
-                         "PPV = TP / (TP + FP)",
-                         "NPV = NP / (NP + FP)"
-                         )
-                       )
-         ) %>% 
+                       levels=c("TruePositiveRate",
+                                "FalsePositiveRate"#,
+                                # "PPV",
+                                # "NPV",
+                                # "Accuracy",
+                                # "BalancedAccuracy",
+                                # "Youden"
+                                ),
+                       labels = c("True Positive Rate",
+                                  "False Positive Rate"))
+           )
+lp[[2]] <- dfp %>% 
   ggplot(aes(x=data,y=value,color=method)) +
   scale_color_manual("",values=c(
     "Standard Bayesian prediction"="red",
@@ -319,16 +544,27 @@ lp[[3]] <- dfp %>%
   theme(legend.position="none",
         strip.text=element_text(color = "black",face = "bold"),
         strip.background = element_rect(fill="white",colour = "black"))
+dfp <- dfsumm_cir %>% 
+  select(method,contains("Rate")) %>% 
+  pivot_longer(contains("Rate")) %>% 
+   mutate(name=factor(name,
+                       levels=c("TruePositiveRate",
+                                "FalsePositiveRate"),
+                       labels = c("True Positive Rate",
+                                  "False Positive Rate"))
+           )
+  
+lp[[3]] <- 
 library(patchwork)
 p <- wrap_plots(lp[c(2:1,3)],
                 ncol=1,
                   heights = c(1, 2, 2)
                 ) +
     plot_annotation(tag_levels = 'A')
- vpath <- ggsave(filename = paste0(getwd(),"/figuras_e_relatorios/figura_ABC_completa.png"),
-        dpi=200,
-        width=11,
-        height=10)
+vpath <- ggsave(filename = "metricas_forescan-main/figuras_e_relatorios/figura_ABC_completa.png",
+                dpi=200,
+                width=11,
+                height=10)
 p
 library(magick)
 f_img <- \(imgpath){
