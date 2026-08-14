@@ -32,18 +32,18 @@ library(officer)
 library(flextable)
 ####### dados gerais #########
 # cir <- cir |> select(Cod6, RS_CIR, COD_CIR)|> rename(CO_MUN_RES=Cod6)
-mapa_cir<-read_sf("~/Documentos/projeto_DOC/SRAG/00_dados_auxiliares/CIR/CIR_UTM.shp")
+mapa_cir<-read_sf("G:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/00_dados_auxiliares/CIR/CIR_UTM.shp")
 names(mapa_cir) <- tolower(names(mapa_cir))
 mapa_cir <- rename(mapa_cir,cod_space=cod_cir)
 
 # WIS e cobertura
-dfwis_cir <- read_csv("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/pasta_tati_forescan/Indicadores/indicador_por_municipio.csv") %>% 
+dfwis_cir <- read_csv("dados/ForeScan/Indicadores/indicador_por_municipio.csv") %>% 
   select(-1)
-dfwis_sepi <- read_csv("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/pasta_tati_forescan/Indicadores/indicador_base.csv") %>% 
+dfwis_sepi <- read_csv("dados/ForeScan/Indicadores/indicador_base.csv") %>% 
   select(-1)
 
 # classificação do satscan
-df_ad0 <- read_csv2("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/metricas_forescan-main/tab_tudo_RR.csv")
+df_ad0 <- read_csv2("dados/tab_tudo_RR.csv")
 
 # classificação inicial das predições
 f_class <- \(pred, truth) {
@@ -100,7 +100,7 @@ dfsumm <- df_ad %>%
     Youden = Sensitivity + Specificity - 1)
 dfsumm2 <- mutate(dfsumm,
                   PPV = ifelse(is.na(PPV),0,PPV))
-write_csv2(dfsumm,file = paste0(getwd(),"/","dfsumm.csv"))
+write_csv2(dfsumm,file = "dados/dfsumm2.csv")
 df_aud <- inner_join(
   select(dfsumm,data:Accuracy),
   group_by(df_ad,data) %>% 
@@ -126,7 +126,7 @@ mapa_cir$rs_cir <- clean_cir(mapa_cir$rs_cir)
 # incluindo o shapefile nas métricas da predição do modelo bayesiano
 ## no 
 dfwis_cir$cir <- clean_cir(dfwis_cir$cir)
-vwis <- unique(dfwis_cir$rs_cir)
+vwis <- unique(dfwis_cir$cir)
 vmapa <- unique(mapa_cir$rs_cir)
 base::setdiff(vwis,vmapa)
 
@@ -382,7 +382,7 @@ lp[[2]] <- dfwis_cir %>%
       strip.text = element_text(face = "bold",size=12),
       text = element_text(size=10)
     )
-lp[[3]] <- f_imgtoggplot("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/pasta_tati_forescan/Indicadores/wis_base.png")
+lp[[3]] <- f_imgtoggplot("dados/ForeScan/Indicadores/wis_base.png")
 lp[[4]] <- dfwis_cir %>% 
   select(dispersao:subprev) %>% 
   pivot_longer(dispersao:subprev) %>% 
@@ -436,7 +436,7 @@ painel_final <- wrap_plots(
   widths = c(1, 1)
   ) + 
   plot_annotation(tag_levels = 'A')
-vpath <- ggsave(filename = "metricas_forescan-main/figuras_e_relatorios/fig1_md_perf.png",
+vpath <- ggsave(filename = "figuras_e_relatorios/fig1_md_perf.png",
                 plot=painel_final,
                 dpi=200,
                 width=14,
@@ -448,7 +448,7 @@ f_img <- \(imgpath){
     image_write(vimg,imgpath)
 }
 f_img(vpath)
-
+painel_final
 ```
 
 
@@ -507,13 +507,80 @@ lp[[1]] <- df_ad %>%
                                     "RR ≤ 1" = "darkgreen")
                            ) +
     labs(y="",x="") +
+    ggtitle(label="A)") +
     facet_wrap(~facet_label) +
     theme_bw() +
     theme(legend.position="bottom",
           legend.margin = margin(t = -5, b = 0, unit = "pt"),
-          legend.box.margin = margin(t = -10, b = 0, unit = "pt"),
+          legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
           legend.box.spacing = unit(0, "pt"),
+          plot.title = element_text(size = 18),
           strip.background = element_rect(fill="white",colour = "black"))
+#
+nsepi <- length(unique(df_ad$data))
+dfp <- df_ad %>% 
+    group_by(COD_CIR) %>% 
+    summarise(SIG = sum(casos==1)*100/nsepi,nSIG=sum(casos==0)*100/nsepi) %>% 
+    pivot_longer(-COD_CIR) %>% 
+    inner_join(x=mapa_cir,y=.,by=c("cod_space"="COD_CIR")) %>% 
+    mutate(name = factor(name,
+                         levels=c("SIG","nSIG"),
+                         labels=c(
+                             "RR > 1",
+                             "RR ≤ 1")
+                         )
+           )
+fplot <- \(vclass){
+    vcolor <- case_when(
+        grepl(">",vclass)~"orange",
+        grepl("≤",vclass)~"darkgreen",
+    )
+    dfp %>% 
+        filter(grepl(vclass,name)) %>% 
+        ggplot(aes(fill=value)) +
+        geom_sf(color="white") +
+        scale_fill_gradient2(low = "darkblue", 
+                             high = "red", 
+                             mid = "yellow", 
+                             midpoint = 50,
+                             name = "% of weeks",
+                             limits=c(0,100)) +
+        facet_wrap(~name,nrow=1) +
+        coord_sf(expand = FALSE) +
+        # 2. Adiciona a Barra de Escala (canto inferior esquerdo)
+        annotation_scale(location = "bl", width_hint = 0.3,style = "ticks") +
+        # 3. Adiciona o Norte (canto superior direito)
+        annotation_north_arrow(
+                    location = "tr", 
+                    which_north = "true",
+                    pad_x = unit(0.15, "in"), 
+                    pad_y = unit(0.15, "in"),
+                    height = unit(0.8, "cm"),  # Reduz o tamanho da seta
+                    width = unit(0.8, "cm"),
+                    style = north_arrow_orienteering(
+                        fill = c("black", "white"),
+                        line_col = "black",
+                        text_size = 7)
+                    ) +
+        # 4. Manutenção do tema limpo para mapas
+        theme_bw() +
+        theme(
+            legend.position="bottom",
+            panel.grid = element_blank(),
+            axis.text = element_blank(),
+            axis.ticks = element_blank(),
+            strip.background = element_rect(fill=vcolor),
+            strip.text = element_text(face = "bold",size=12,color="white"),
+            text = element_text(size=10)
+            )
+}
+lpi <- lapply(levels(dfp$name),fplot)
+lp[[2]] <- wrap_elements(
+    wrap_plots(lpi,ncol=2, guides = "collect") +
+    plot_annotation(title = "B)") &
+    theme(legend.position = "bottom")
+    )
+#
 dfp <- dfsumm2 %>% 
   select(data:method,contains("Rate")) %>% 
   pivot_longer(cols=contains("Rate")) %>% 
@@ -529,21 +596,25 @@ dfp <- dfsumm2 %>%
                        labels = c("True Positive Rate",
                                   "False Positive Rate"))
            )
-lp[[2]] <- dfp %>% 
-  ggplot(aes(x=data,y=value,color=method)) +
-  scale_color_manual("",values=c(
-    "Standard Bayesian prediction"="red",
-    "Moving average of Bayesian predictions"="blue",
-    "Naive baseline"="black")) +
-  geom_line(alpha=0.5,linewidth = 1.5) +
-  geom_point(alpha=0.5,size = 1.5) +
-  theme_bw() +
-  labs(y="",x="epidemiological week") +
-  facet_wrap(~name,ncol=2) +
-  scale_y_continuous(expand=c(0,0.01)) +
-  theme(legend.position="none",
-        strip.text=element_text(color = "black",face = "bold"),
-        strip.background = element_rect(fill="white",colour = "black"))
+lp[[3]] <- dfp %>% 
+    ggplot(aes(x=data,y=value,color=method)) +
+    scale_color_manual("",values=c(
+        "Standard Bayesian prediction"="red",
+        "Moving average of Bayesian predictions"="blue",
+        "Naive baseline"="black")) +
+    geom_line(alpha=0.5,linewidth = 1.5) +
+    geom_point(alpha=0.5,size = 1.5) +
+    theme_bw() +
+    labs(y="",x="") +
+    ggtitle("C)") +
+    facet_wrap(~name,ncol=2) +
+    scale_y_continuous(expand=c(0,0.01)) +
+    theme(legend.position="bottom",
+          legend.margin = margin(t = -5, b = 0, unit = "pt"),
+          legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
+          strip.text=element_text(color = "black",face = "bold"),
+          strip.background = element_rect(fill="white",colour = "black"))
+#
 dfp <- dfsumm_cir %>% 
   select(method,contains("Rate")) %>% 
   pivot_longer(contains("Rate")) %>% 
@@ -553,26 +624,134 @@ dfp <- dfsumm_cir %>%
                        labels = c("True Positive Rate",
                                   "False Positive Rate"))
            )
-  
-lp[[3]] <- 
-library(patchwork)
-p <- wrap_plots(lp[c(2:1,3)],
-                ncol=1,
-                  heights = c(1, 2, 2)
+f_ggplot <- \(vgrepl,vrange=c(0,1)){
+    dfp0 <- dfp %>% filter(grepl(vgrepl,name))
+    vmethods <- levels(dfp$method)
+    vfacetlabel <- dfp0$name[1] %>% as.character()
+    vtitle <- ifelse(grepl("True",vgrepl),"D)","E)")
+    fplot <- \(vmet){
+        vcolorstrip <- case_when(
+            grepl("Naive",vmet) ~ "black",
+            grepl("Standard",vmet) ~ "red",
+            grepl("Moving",vmet) ~ "blue"
+            )
+        dfi <- filter(dfp0,method==vmet) %>% 
+            mutate(method=factor(method,
+                                 levels=c(
+                                     "Standard Bayesian prediction",
+                                     "Moving average of Bayesian predictions",
+                                     "Naive baseline"),
+                                 labels=c("Std Bayesian pred.",
+                                          "Mv avg Bayesian pred.",
+                                          "Naive baseline")
+                                 )
+                   )
+        dfi %>% 
+            ggplot(aes(fill=value)) +
+            geom_sf(color="gray") +
+            scale_fill_gradient2(low = "purple", 
+                                 mid = "white", 
+                                 high = "yellow", 
+                                 midpoint = 0.50,
+                                 name = vfacetlabel,
+                                 limits=vrange) +
+            facet_wrap(~method,ncol=1) +
+            # 1. Ajuste dos eixos para não ter sobras (margens zeradas)
+            coord_sf(expand = FALSE) +
+            # 2. Adiciona a Barra de Escala (canto inferior esquerdo)
+            annotation_scale(location = "bl", width_hint = 0.3,style = "ticks") +
+            # 3. Adiciona o Norte (canto superior direito)
+            annotation_north_arrow(
+                location = "tr", 
+                which_north = "true",
+                pad_x = unit(0.15, "in"), 
+                pad_y = unit(0.15, "in"),
+                height = unit(0.8, "cm"),  # Reduz o tamanho da seta
+                width = unit(0.8, "cm"),
+                style = north_arrow_orienteering(
+                    fill = c("black", "white"),
+                    line_col = "black",
+                    text_size = 7)
                 ) +
-    plot_annotation(tag_levels = 'A')
-vpath <- ggsave(filename = "metricas_forescan-main/figuras_e_relatorios/figura_ABC_completa.png",
-                dpi=200,
-                width=11,
-                height=10)
-p
+            # 4. Manutenção do tema limpo para mapas
+            theme_bw() +
+            theme(
+                legend.position="top",
+                panel.grid = element_blank(),
+                axis.text = element_blank(),
+                axis.ticks = element_blank(),
+                strip.background = element_rect(fill = vcolorstrip),
+                strip.text = element_text(face = "bold",size=12,color="white"),
+                text = element_text(size=10)
+            )
+    }
+    lpi <- lapply(grep("Baye",vmethods,value = TRUE),fplot)
+    wrap_elements(
+        wrap_plots(lpi,nrow=1, guides = "collect") +
+        plot_annotation(title=vtitle) &
+        theme(legend.position = "bottom")
+    )
+}  
+lp1 <- lapply(levels(dfp$name),f_ggplot)
+lp[[4]] <- wrap_elements(
+    wrap_plots(lp1,ncol=2)
+    )
+names(lp) <- LETTERS[1:length(lp)]
+lpath <- lapply(names(lp),\(li){
+    p <- lp[[li]]
+    vpath <- tempfile(fileext = ".png")
+    ggsave(filename = vpath,
+           plot=p,
+           dpi=200,
+           width = ifelse(li%in%c("C","D"),12,6),
+           height = ifelse(li%in%c("C"),4,5))
+    return(vpath)
+})
+library(magick)
+limg <- lapply(lpath,\(li){
+    image_read(li) %>%
+        image_trim() %>% 
+        image_scale(.,"x1416") # mesma altura
+})
+limg[[2]] <- image_border(limg[[2]], "white", "20x0")
+limg[[1]] <- image_scale(limg[[1]],"2065x1416")
+primeira_linha <- image_append(c(limg[[1]], limg[[2]]), stack = FALSE) %>% 
+    image_scale(.,4130)
+limg[[3]] <- image_scale(limg[[3]],4130) %>% 
+    image_border(., "white", "0x20")
+pfinal <- image_append(c(primeira_linha,limg[[3]]),stack=TRUE)
+limg[[4]] <- image_scale(limg[[4]],4130)
+pfinal <- image_append(c(pfinal,limg[[4]]),stack=TRUE)
+pfinal
+image_write(pfinal,"figuras_e_relatorios/figura_ABC_completa2.png")
+# 
+#     
+#     
+# library(patchwork)
+# # p <- wrap_plots(lp[c(2:1,3)],
+# #                 ncol=1,
+# #                   heights = c(1, 2, 2)
+# #                 ) +
+# #     plot_annotation(tag_levels = 'A')
+# p <- wrap_plots(lp) +
+#   plot_layout(design = "
+#     AB
+#     CC
+#     DD
+#   ") 
+# vpath <- ggsave(filename = "figuras_e_relatorios/figura_ABC_completa2.png",
+#                 plot=p,
+#                 dpi=200,
+#                 width=11,
+#                 height=10)
+# p
 library(magick)
 f_img <- \(imgpath){
     vimg <- image_read(imgpath) %>%
         image_trim()
     image_write(vimg,imgpath)
 }
-f_img(vpath)
+f_img("figuras_e_relatorios/figura_ABC_completa2.png")
 ```
 
 
