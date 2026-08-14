@@ -169,6 +169,19 @@ dfsumm_cir <- left_join(mapa_cir,dfsumm_cir,by=c("cod_space"="COD_CIR"))
 df_aud %>% 
   filter(PPV==1,grepl("Naive",method)) %>% 
   select(method:Sensitivity,PPV,Real.Pos,Real.Neg)
+dfsumm %>%
+    group_by(data,method) %>% 
+    mutate(total = sum(FN,TN,TP,FP)) %>% 
+    summary()
+dfsumm_cir %>% 
+    sf::st_drop_geometry() %>% 
+    group_by(rs_cir,method) %>% 
+    mutate(total = sum(FN,TN,TP,FP)) %>% 
+    select(rs_cir:FP,total) %>% 
+    filter(grepl("POLO",rs_cir)) %>% 
+    mutate(TPR = TP / (TP + FN),
+           FPR = FP / (FP + TN)
+           )
 ```
 
 # Context
@@ -624,6 +637,16 @@ dfp <- dfsumm_cir %>%
                        labels = c("True Positive Rate",
                                   "False Positive Rate"))
            )
+dfaud <- dfsumm_cir %>% 
+    filter(grepl("Naive",method))
+dfaud %>% 
+    ggplot() +
+    geom_sf() +
+    geom_sf_label(aes(label=rs_cir))
+
+
+
+
 f_ggplot <- \(vgrepl,vrange=c(0,1)){
     dfp0 <- dfp %>% filter(grepl(vgrepl,name))
     vmethods <- levels(dfp$method)
@@ -758,7 +781,7 @@ dfp_sepi %>%
 dfp_cir <- inner_join(
     dfwis_cir %>% 
         st_drop_geometry() %>% 
-        select(cod_space,WIS:subprev),
+        select(cod_space,WIS:subprev,MAE),
     dfsumm_cir %>% 
         st_drop_geometry() %>% 
         select(cod_space,method,contains("Rate")) %>% 
