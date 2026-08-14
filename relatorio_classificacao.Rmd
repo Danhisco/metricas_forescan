@@ -723,7 +723,7 @@ pfinal <- image_append(c(primeira_linha,limg[[3]]),stack=TRUE)
 limg[[4]] <- image_scale(limg[[4]],4130)
 pfinal <- image_append(c(pfinal,limg[[4]]),stack=TRUE)
 pfinal
-image_write(pfinal,"figuras_e_relatorios/figura_ABC_completa2.png")
+image_write(pfinal,"figuras_e_relatorios/figura_ABC_completa.png")
 # 
 #     
 #     
@@ -751,7 +751,7 @@ f_img <- \(imgpath){
         image_trim()
     image_write(vimg,imgpath)
 }
-f_img("figuras_e_relatorios/figura_ABC_completa2.png")
+f_img("figuras_e_relatorios/figura_ABC_completa.png")
 ```
 
 
