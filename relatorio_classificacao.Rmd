@@ -30,20 +30,23 @@ library(readxl)
 library(sf)
 library(officer)
 library(flextable)
+library(patchwork)
+library(magick)
+library(ggspatial)
 ####### dados gerais #########
 # cir <- cir |> select(Cod6, RS_CIR, COD_CIR)|> rename(CO_MUN_RES=Cod6)
-mapa_cir<-read_sf("G:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/00_dados_auxiliares/CIR/CIR_UTM.shp")
+mapa_cir<-read_sf("~/Documentos/projeto_DOC/SRAG/00_dados_auxiliares/CIR/CIR_UTM.shp")
 names(mapa_cir) <- tolower(names(mapa_cir))
 mapa_cir <- rename(mapa_cir,cod_space=cod_cir)
 
 # WIS e cobertura
-dfwis_cir <- read_csv("dados/ForeScan/Indicadores/indicador_por_municipio.csv") %>% 
+dfwis_cir <- read_csv("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/pasta_tati_forescan/Indicadores/indicador_por_municipio.csv") %>% 
   select(-1)
-dfwis_sepi <- read_csv("dados/ForeScan/Indicadores/indicador_base.csv") %>% 
+dfwis_sepi <- read_csv("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/pasta_tati_forescan/Indicadores/indicador_base.csv") %>% 
   select(-1)
 
 # classificação do satscan
-df_ad0 <- read_csv2("dados/tab_tudo_RR.csv")
+df_ad0 <- read_csv2("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/metricas_forescan-main/tab_tudo_RR.csv")
 
 # classificação inicial das predições
 f_class <- \(pred, truth) {
@@ -72,7 +75,7 @@ df_ad <- df_ad0 %>%
         )
 
 # métricas de classificação de predição
-dfsumm <- df_ad %>%
+dfsumm2 <- df_ad %>%
   select(data,ends_with("_c")) %>%
   pivot_longer(ends_with("_c"),
                names_to = "method",
@@ -94,15 +97,17 @@ dfsumm <- df_ad %>%
     FalsePositiveRate = FP/(FP+TN), # % of real neg incorrectly identified
     Specificity = TN/(TN+FP),
     PPV = TP/(TP+FP),
+    PPV = ifelse(is.na(PPV),0,PPV),
     NPV = TN/(TN+FN),
     Accuracy = (TP+TN)/(TP+TN+FP+FN),
     BalancedAccuracy = (Sensitivity + Specificity)/2,
-    Youden = Sensitivity + Specificity - 1)
-dfsumm2 <- mutate(dfsumm,
-                  PPV = ifelse(is.na(PPV),0,PPV))
-write_csv2(dfsumm,file = "dados/dfsumm2.csv")
+    Youden = Sensitivity + Specificity - 1,
+    F1 = 2 * (TruePositiveRate * PPV) / (TruePositiveRate + PPV),
+    F1 = ifelse(is.na(F1),0,F1)
+    )
+#write_csv2(dfsumm,file = "dados/dfsumm2.csv")
 df_aud <- inner_join(
-  select(dfsumm,data:Accuracy),
+  select(dfsumm2,data:Accuracy),
   group_by(df_ad,data) %>% 
     summarise(Real.Pos = sum(casos==1),
               Real.Neg=sum(casos==0)),
@@ -153,15 +158,16 @@ dfsumm_cir <- df_ad %>%
                         "Naive baseline")),
     TruePositiveRate = TP/(TP+FN), # % of real pos correctly identified
     FalsePositiveRate = FP/(FP+TN), # % of real neg incorrectly identified
-    Specificity = TN/(TN+FP),
-    PPV = TP/(TP+FP),
-    NPV = TN/(TN+FN),
-    Accuracy = (TP+TN)/(TP+TN+FP+FN)) %>% 
+    Specificity = TN/(TN+FP), # taxa de verdadeiro negativo TNR
+    PPV = TP/(TP+FP), # % das atribuições positivas que são verdadeiras
+    NPV = TN/(TN+FN), # % das atribuiçãos negativas que são verdadeiras
+    Accuracy = (TP+TN)/(TP+TN+FP+FN)) %>% # % de certos de todas as atrib
   mutate(
-    PPV = ifelse(is.na(PPV),0,PPV),
-    TruePositiveRate = ifelse(is.na(TruePositiveRate),0,TruePositiveRate),
+    PPV = ifelse(is.na(PPV),0,PPV), # em casos que há 0 atrib positivas (TP+FP=0)
+    TruePositiveRate = ifelse(is.na(TruePositiveRate),0,TruePositiveRate), # casos sem atribuições positivas corretas e sem erros em atribuições negativas, COD_CIR: 35012 35031 35034 35061 35062 35073 35081 35082 35083 35092 35094 35101 35131 35142 35143 35161 35162 35163
     BalancedAccuracy = (TruePositiveRate + Specificity)/2,
-    Youden = TruePositiveRate + Specificity - 1
+    Youden = TruePositiveRate - FalsePositiveRate,
+    F1 = 2 * (TruePositiveRate * PPV) / (TruePositiveRate + PPV)
   )
 dfsumm_cir <- left_join(mapa_cir,dfsumm_cir,by=c("cod_space"="COD_CIR"))
 ```
@@ -470,36 +476,8 @@ painel_final
 
 ## Figure 2 from main text: SaTScan-based risk classification of CIRs
 
-```{r fig1, include=TRUE,eval=TRUE ,fig.width=10,fig.height=14}
+```{r fig2, include=TRUE,eval=TRUE ,fig.width=10,fig.height=14}
 lp <- list()
-# lp[[1]] <- dfsumm2 %>% 
-#     select(data:FP) %>% 
-#     pivot_longer(cols=FP:FN) %>% 
-#     mutate(name=factor(name,
-#                        levels=c("TP","TN","FP","FN"),
-#                        labels=c(
-#                            "True Positive (TP)",
-#                            "True Negative (TN)",
-#                            "False Positive (FP)",
-#                            "False Negative (FN)"
-#                            )
-#                        )
-#            ) %>% 
-#     ggplot(aes(x=data,y=value,color=method)) +
-#     geom_point(size=1.12,alpha=0.5) +
-#     geom_line(linewidth=1.15,alpha=0.5) +
-#     scale_color_manual("",values=c(
-#         "Standard Bayesian prediction"="red",
-#         "Moving average of Bayesian predictions"="blue",
-#         "Naive baseline"="black")) +
-#     facet_wrap(~name,nrow=2,scales="free") +
-#     labs(y="",x="") +
-#     theme_bw() +
-#     theme(legend.position="bottom",
-#           legend.margin = margin(t = -4, b = 0, unit = "pt"),
-#           legend.box.margin = margin(t = -10, b = 0, unit = "pt"),
-#           legend.box.spacing = unit(0, "pt"),
-#           strip.background = element_rect(fill="white",colour = "black"))
 lp[[1]] <- df_ad %>% 
     group_by(data) %>% 
     summarise(SIG = sum(casos==1),nSIG=sum(casos==0)) %>% 
@@ -599,35 +577,51 @@ dfp <- dfsumm2 %>%
   pivot_longer(cols=contains("Rate")) %>% 
     mutate(name=factor(name,
                        levels=c("TruePositiveRate",
-                                "FalsePositiveRate"#,
-                                # "PPV",
-                                # "NPV",
-                                # "Accuracy",
-                                # "BalancedAccuracy",
-                                # "Youden"
+                                "FalsePositiveRate"
                                 ),
                        labels = c("True Positive Rate",
                                   "False Positive Rate"))
            )
-lp[[3]] <- dfp %>% 
-    ggplot(aes(x=data,y=value,color=method)) +
+fplot <- \(vgrepl,vrange=c(0,1)){
+  dfp0 <- dfp %>% filter(grepl(vgrepl,name)) %>% 
+    mutate(method=factor(method,
+                         levels=c(
+                           "Standard Bayesian prediction",
+                           "Moving average of Bayesian predictions",
+                           "Naive baseline"),
+                         labels = c(
+                           "Std. Bayesian prediction",
+                           "MA Bayesian prediction", 
+                           "Naive baseline"
+                           )
+                         )
+                   )
+  vtitle <- ifelse(grepl("True",vgrepl),"C)","E)")
+  dfp0 %>% 
+  ggplot(aes(x=data,y=value,color=method)) +
     scale_color_manual("",values=c(
-        "Standard Bayesian prediction"="red",
-        "Moving average of Bayesian predictions"="blue",
+        "Std. Bayesian prediction"="red",
+        "MA Bayesian prediction"="blue",
         "Naive baseline"="black")) +
     geom_line(alpha=0.5,linewidth = 1.5) +
     geom_point(alpha=0.5,size = 1.5) +
     theme_bw() +
     labs(y="",x="") +
-    ggtitle("C)") +
+    ggtitle(label=vtitle) +
     facet_wrap(~name,ncol=2) +
-    scale_y_continuous(expand=c(0,0.01)) +
+    scale_y_continuous(expand=c(0,0.01),limits = vrange) +
     theme(legend.position="bottom",
           legend.margin = margin(t = -5, b = 0, unit = "pt"),
           legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
+          plot.title = element_text(size = 18),
           strip.text=element_text(color = "black",face = "bold"),
           strip.background = element_rect(fill="white",colour = "black"))
-#
+}
+lpi_sepi <- lapply(levels(dfp$name),fplot)
+lpi_sepi[[3]] <- lp[[1]]
+names(lpi_sepi) <- c(levels(dfp$name),"Real")
+
+# por cir
 dfp <- dfsumm_cir %>% 
   select(method,contains("Rate")) %>% 
   pivot_longer(contains("Rate")) %>% 
@@ -637,21 +631,11 @@ dfp <- dfsumm_cir %>%
                        labels = c("True Positive Rate",
                                   "False Positive Rate"))
            )
-dfaud <- dfsumm_cir %>% 
-    filter(grepl("Naive",method))
-dfaud %>% 
-    ggplot() +
-    geom_sf() +
-    geom_sf_label(aes(label=rs_cir))
-
-
-
-
 f_ggplot <- \(vgrepl,vrange=c(0,1)){
     dfp0 <- dfp %>% filter(grepl(vgrepl,name))
     vmethods <- levels(dfp$method)
     vfacetlabel <- dfp0$name[1] %>% as.character()
-    vtitle <- ifelse(grepl("True",vgrepl),"D)","E)")
+    vtitle <- ifelse(grepl("True",vgrepl),"D)","F)")
     fplot <- \(vmet){
         vcolorstrip <- case_when(
             grepl("Naive",vmet) ~ "black",
@@ -664,9 +648,11 @@ f_ggplot <- \(vgrepl,vrange=c(0,1)){
                                      "Standard Bayesian prediction",
                                      "Moving average of Bayesian predictions",
                                      "Naive baseline"),
-                                 labels=c("Std Bayesian pred.",
-                                          "Mv avg Bayesian pred.",
-                                          "Naive baseline")
+                                 labels = c(
+                                   "Standard Bayes",
+                                   "MA Bayes", 
+                                   "Naive baseline"
+                                   )
                                  )
                    )
         dfi %>% 
@@ -715,38 +701,46 @@ f_ggplot <- \(vgrepl,vrange=c(0,1)){
         theme(legend.position = "bottom")
     )
 }  
-lp1 <- lapply(levels(dfp$name),f_ggplot)
-lp[[4]] <- wrap_elements(
-    wrap_plots(lp1,ncol=2)
-    )
-names(lp) <- LETTERS[1:length(lp)]
-lpath <- lapply(names(lp),\(li){
-    p <- lp[[li]]
-    vpath <- tempfile(fileext = ".png")
-    ggsave(filename = vpath,
-           plot=p,
+lpi_cir <- lapply(levels(dfp$name),f_ggplot)
+lpi_cir[[3]] <- lp[[2]]
+names(lpi_cir) <- c(levels(dfp$name),"Real")
+#
+f_ggsave <- \(vpath,pplot,vw,vh){
+  ggsave(filename = vpath,
+           plot=pplot,
            dpi=200,
-           width = ifelse(li%in%c("C","D"),12,6),
-           height = ifelse(li%in%c("C"),4,5))
-    return(vpath)
+           width = vw,
+           height = vh)
+}
+df_save <- data.frame(label=paste0(LETTERS[1:6],")"),
+                      vnames=rep(names(lpi_cir)[c(3,1:2)],each=2),
+                      vlist=rep(c("_sepi","_cir"),3)) 
+lpath <- lapply(split(df_save,df_save$label),\(dfi){
+  lp <-get(paste0("lpi",dfi$vlist))
+  p <- lp[[dfi$vnames]]
+  vpath <- tempfile(fileext = ".png")
+  f_ggsave(vpath = vpath,
+           pplot=p,
+           vw = 6,
+           vh = 5)
+  return(vpath)
 })
-library(magick)
+
 limg <- lapply(lpath,\(li){
     image_read(li) %>%
         image_trim() %>% 
         image_scale(.,"x1416") # mesma altura
 })
-limg[[2]] <- image_border(limg[[2]], "white", "20x0")
-limg[[1]] <- image_scale(limg[[1]],"2065x1416")
-primeira_linha <- image_append(c(limg[[1]], limg[[2]]), stack = FALSE) %>% 
-    image_scale(.,4130)
-limg[[3]] <- image_scale(limg[[3]],4130) %>% 
-    image_border(., "white", "0x20")
-pfinal <- image_append(c(primeira_linha,limg[[3]]),stack=TRUE)
-limg[[4]] <- image_scale(limg[[4]],4130)
-pfinal <- image_append(c(pfinal,limg[[4]]),stack=TRUE)
-pfinal
-image_write(pfinal,"figuras_e_relatorios/figura_ABC_completa.png")
+f_append <- \(vi=0,vstack=FALSE){
+  vind <- c(1,2) + 2*vi
+  image_append(c(limg[[vind[[1]]]], limg[[vind[[2]]]]), stack = vstack)
+}
+limg_final <- lapply(0:2,f_append)
+f_append <- \(x,y){
+  image_append(c(x, y), stack = TRUE)
+}
+img_final <- Reduce("f_append",limg_final)
+image_write(img_final,"figuras_e_relatorios/figura_ABC_completa.png")
 # 
 library(magick)
 f_img <- \(imgpath){
@@ -807,6 +801,39 @@ dfp_cir %>%
 ```
 
 
+## Fig with the extra material from the confusion matrix
+
+```{r}
+lp <- list()
+lp[[1]] <- dfsumm2 %>%
+    select(data:FP) %>%
+    pivot_longer(cols=FP:FN) %>%
+    mutate(name=factor(name,
+                       levels=c("TP","TN","FP","FN"),
+                       labels=c(
+                           "True Positive (TP)",
+                           "True Negative (TN)",
+                           "False Positive (FP)",
+                           "False Negative (FN)"
+                           )
+                       )
+           ) %>%
+    ggplot(aes(x=data,y=value,color=method)) +
+    geom_point(size=1.12,alpha=0.5) +
+    geom_line(linewidth=1.15,alpha=0.5) +
+    scale_color_manual("",values=c(
+        "Standard Bayesian prediction"="red",
+        "Moving average of Bayesian predictions"="blue",
+        "Naive baseline"="black")) +
+    facet_wrap(~name,nrow=2,scales="free") +
+    labs(y="",x="") +
+    theme_bw() +
+    theme(legend.position="bottom",
+          legend.margin = margin(t = -4, b = 0, unit = "pt"),
+          legend.box.margin = margin(t = -10, b = 0, unit = "pt"),
+          legend.box.spacing = unit(0, "pt"),
+          strip.background = element_rect(fill="white",colour = "black"))
+```
 
 
 ## Method performance evaluation metrics
