@@ -561,7 +561,7 @@ fplot <- \(vclass){
             axis.text = element_blank(),
             axis.ticks = element_blank(),
             strip.background = element_rect(fill=vcolor),
-            strip.text = element_text(face = "bold",size=12,color="white"),
+            strip.text = element_text(face = "bold",size=8,color="white"),
             text = element_text(size=10)
             )
 }
@@ -569,8 +569,19 @@ lpi <- lapply(levels(dfp$name),fplot)
 lp[[2]] <- wrap_elements(
     wrap_plots(lpi,ncol=2, guides = "collect") +
     plot_annotation(title = "B)") &
-    theme(legend.position = "bottom")
+    theme(legend.position = "bottom",
+          plot.margin = margin(t = 2, r = 2, b = 2, l = 2, unit = "pt"),
+          # altura e largura
+          legend.key.height = unit(0.2, "cm"), 
+          legend.key.width  = unit(0.6, "cm"), 
+              # fonte elementos
+              legend.text = element_text(size = 5),
+              #fonte do título
+              legend.title = element_text(size = 6, face = "bold"),
+              #aproxima a legenda
+              legend.box.margin = margin(t = -5, b = 0, unit = "pt")
     )
+)
 #
 dfp <- dfsumm2 %>% 
   select(data:method,contains("Rate")) %>% 
@@ -614,7 +625,7 @@ fplot <- \(vgrepl,vrange=c(0,1)){
           legend.margin = margin(t = -5, b = 0, unit = "pt"),
           legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
           plot.title = element_text(size = 18),
-          strip.text=element_text(color = "black",face = "bold"),
+          strip.text=element_text(color = "black",face = "bold",size=8),
           strip.background = element_rect(fill="white",colour = "black"))
 }
 lpi_sepi <- lapply(levels(dfp$name),fplot)
@@ -690,7 +701,7 @@ f_ggplot <- \(vgrepl,vrange=c(0,1)){
                 axis.text = element_blank(),
                 axis.ticks = element_blank(),
                 strip.background = element_rect(fill = vcolorstrip),
-                strip.text = element_text(face = "bold",size=12,color="white"),
+                strip.text = element_text(face = "bold",size=8,color="white"),
                 text = element_text(size=10)
             )
     }
@@ -698,7 +709,18 @@ f_ggplot <- \(vgrepl,vrange=c(0,1)){
     wrap_elements(
         wrap_plots(lpi,nrow=1, guides = "collect") +
         plot_annotation(title=vtitle) &
-        theme(legend.position = "bottom")
+        theme(legend.position = "bottom",
+              plot.margin = margin(t = 2, r = 2, b = 2, l = 2, unit = "pt"),
+              # altura e largura
+              legend.key.height = unit(0.2, "cm"), 
+              legend.key.width  = unit(0.6, "cm"), 
+              # fonte elementos
+              legend.text = element_text(size = 5),
+              #fonte do título
+              legend.title = element_text(size = 6, face = "bold"),
+              #aproxima a legenda
+              legend.box.margin = margin(t = -5, b = 0, unit = "pt")
+              )
     )
 }  
 lpi_cir <- lapply(levels(dfp$name),f_ggplot)
@@ -747,6 +769,7 @@ f_img <- \(imgpath){
     vimg <- image_read(imgpath) %>%
         image_trim()
     image_write(vimg,imgpath)
+    gc()
 }
 f_img("figuras_e_relatorios/figura_ABC_completa.png")
 ```
