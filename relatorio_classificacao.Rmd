@@ -950,7 +950,12 @@ ggsave(filename = "figuras_e_relatorios/metricas_classificacao.png",
        width = 12,
        height = 20,
        dpi=70)
-
+f_img <- \(imgpath){
+    vimg <- image_read(imgpath) %>%
+        image_trim()
+    image_write(vimg,imgpath)
+}
+f_img("figuras_e_relatorios/metricas_classificacao.png")
 ```
 
 
@@ -979,7 +984,14 @@ f_plot <- \(vcol="TP"){
         across(
             .cols = FN:FP,
             .fns = ~.x/34
-            )
+            ),
+        method=factor(method,
+                      levels = c("Standard Bayesian prediction",
+                                 "Moving average of Bayesian predictions",
+                                 "Naive baseline"),
+                      labels = c("Standard Bayes",
+                                 "MA Bayes",
+                                 "Naive baseline"))
         ) %>% 
     ggplot(aes(fill=.data[[vcol]])) +
     geom_sf(color="gray") +
@@ -1023,6 +1035,18 @@ f_plot <- \(vcol="TP"){
 }
 lp <- lapply(names(dfsumm_cir)[c(5:8,11:16)],f_plot)
 names(lp) <- names(dfsumm_cir)[c(5:8,11:16)]
+fggsave <- \(vname){
+  pi <- lp[[vname]]
+  ggsave(filename = paste0("figuras_e_relatorios/metricas_confusao_por_CIR/",vname,".png"),
+         plot=pi,
+         dpi=100,
+         width=7.2,
+         height=7
+         )
+}
+lpath <- lapply(names(lp),fggsave)
+
+
 
 ```
 
