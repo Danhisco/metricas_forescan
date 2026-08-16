@@ -790,22 +790,85 @@ f_img("figuras_e_relatorios/figura_ABC_completa.png")
 
 
 ```{r}
+library(corrplot)
+# exemplo:
+# corrplot(M, method = 'ellipse', order = 'AOE', type = 'upper')
 dfp_sepi <- inner_join(
-    dfwis_sepi %>% 
-        select(base,WIS:superprev),
-    dfsumm %>% 
-        select(data:method,contains("Rate")) %>% 
-        filter(!grepl("Naive",method)),
+    dfwis_sepi %>% select(-n),
+    dfsumm2 %>% 
+      filter(!grepl("Naive",method)) %>% 
+      select(-Sensitivity,-BalancedAccuracy),
     by=c("base"="data")
+    ) %>% 
+  relocate(method,.after="base") %>% 
+  mutate(method=droplevels(method)) %>% 
+  rename(TPR=TruePositiveRate,FPR=FalsePositiveRate)
+f_gsub <- \(vc){
+  gsub("^TP$","True Positive (TP)",vc) %>% 
+    gsub("^TN$","True Negative (TN)",.) %>% 
+    gsub("^FP$","False Positive (FP)",.) %>% 
+    gsub("^FN$","False Negative (FN)",.) %>% 
+    gsub("TruePositiveRate|TPR","True Positive Rate (TPR)",.) %>% 
+    gsub("cob50","Pred. Int. 50%",.) %>% 
+    gsub("cob95","Pred. Int. 95%",.) %>% 
+    gsub("dispersao","Spread",.) %>% 
+    gsub("subprev","Underprediction",.) %>% 
+    gsub("superprev","Overprediction",.) %>%
+    gsub("PPV","Positive Predictive Value (PPV)",.) %>%
+    gsub("NPV","Nositive Predictive Value (NPV)",.) %>%
+    gsub("FalsePositiveRate|FPR","False Positive Rate (FPR)",.)
+}
+f_corrplot <- \(vtitle,vw=10,vh=10){
+  dfcor <- filter(dfp_sepi,method==vtitle) %>% 
+    as.data.frame()
+  mcor <- cor(select(dfcor,-base,-method),method = "spearman")
+  colnames(mcor) <- f_gsub(colnames(mcor))
+  rownames(mcor) <- f_gsub(rownames(mcor))
+  vpath <- tempfile(fileext = ".png")
+  png(
+    filename = vpath, 
+    width = vw,
+    height = vh,
+    units = "in",
+    res = 100
     )
-#
-dfp_sepi %>% 
-    ggplot(aes(x=WIS,y=TruePositiveRate)) +
-    geom_point() +
-    geom_smooth(se=FALSE,method="lm") +
-    facet_wrap(~method,ncol=2)
-
-
+  corrplot(mcor, method = "ellipse", order = "original", 
+           type = "lower", tl.col = "black",tl.srt = 45) %>% 
+    corrRect(c(1,8,19))
+  dev.off()
+  return(vpath)
+}
+lpath <- lapply(levels(dfp_sepi$method),f_corrplot)
+names(lpath) <- levels(dfp_sepi$method)
+limg <- lapply(names(lpath),\(li){
+  #
+  vpath <- lpath[[li]]  
+  img <- image_read(vpath) %>%
+        image_trim() 
+  #
+  info <- image_info(img)
+  largura <- info$width
+  #
+  banner_titulo <- image_blank(
+    width = largura, 
+    height = 80,
+  color = "white") %>% 
+  image_annotate(
+      text = li,
+      gravity = "center",
+      size = 28,         
+      font = "sans",     
+      color = "black",   
+      weight = 700)
+  #
+  image_append(c(banner_titulo, img), stack = TRUE) %>% 
+    image_trim()
+  }
+  )
+img_final <- image_append(do.call("c",limg),stack = FALSE)
+image_write(img_final,path = "figuras_e_relatorios/correlation_plot.png")
+#@ não vejo pq fazer por CIR, pois a classificação do SatSCan é contextual.
+#@ Já a agregação pela unidade espacial remove o contexto temporal.
 dfp_cir <- inner_join(
     dfwis_cir %>% 
         st_drop_geometry() %>% 
@@ -817,21 +880,6 @@ dfp_cir <- inner_join(
     ) %>% 
     select(-cod_space) %>% 
     mutate(method=droplevels(method))
-
-f_cor <- \(dfi){
-    cor(select(dfi,-method),
-        method="spearman",
-        use = "pairwise.complete.obs")
-}
-ldf <- split(dfp_cir,dfp_cir$method) %>% lapply(.,f_cor)
-
-
-
-dfp_cir %>% 
-    ggplot(aes(x=WIS,y=FalsePositiveRate)) +
-    geom_point() +
-    geom_smooth(se=FALSE,method="lm") +
-    facet_wrap(~method,ncol=2)
 ```
 
 
