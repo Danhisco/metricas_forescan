@@ -30,23 +30,20 @@ library(readxl)
 library(sf)
 library(officer)
 library(flextable)
-library(patchwork)
-library(magick)
-library(ggspatial)
 ####### dados gerais #########
 # cir <- cir |> select(Cod6, RS_CIR, COD_CIR)|> rename(CO_MUN_RES=Cod6)
-mapa_cir<-read_sf("~/Documentos/projeto_DOC/SRAG/00_dados_auxiliares/CIR/CIR_UTM.shp")
+mapa_cir<-read_sf("G:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/00_dados_auxiliares/CIR/CIR_UTM.shp")
 names(mapa_cir) <- tolower(names(mapa_cir))
 mapa_cir <- rename(mapa_cir,cod_space=cod_cir)
 
 # WIS e cobertura
-dfwis_cir <- read_csv("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/pasta_tati_forescan/Indicadores/indicador_por_municipio.csv") %>% 
+dfwis_cir <- read_csv("dados/ForeScan/Indicadores/indicador_por_municipio.csv") %>% 
   select(-1)
-dfwis_sepi <- read_csv("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/pasta_tati_forescan/Indicadores/indicador_base.csv") %>% 
+dfwis_sepi <- read_csv("dados/ForeScan/Indicadores/indicador_base.csv") %>% 
   select(-1)
 
 # classificação do satscan
-df_ad0 <- read_csv2("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/metricas_forescan-main/tab_tudo_RR.csv")
+df_ad0 <- read_csv2("dados/tab_tudo_RR.csv")
 
 # classificação inicial das predições
 f_class <- \(pred, truth) {
@@ -173,7 +170,7 @@ dfsumm_cir <- mutate(dfsumm_cir,
                      F1 = ifelse(is.na(F1),0,F1))
 dfsumm_cir <- left_join(mapa_cir,dfsumm_cir,by=c("cod_space"="COD_CIR"))
 ```
-```{r}
+```{r eval=FALSE,include=FALSE}
 df_aud %>% 
   filter(PPV==1,grepl("Naive",method)) %>% 
   select(method:Sensitivity,PPV,Real.Pos,Real.Neg)
@@ -310,7 +307,7 @@ ft_metricas
 
 Model evaluation metrics: cover percentage and WIS decomposition
 
-```{r}
+```{r fig1-main-text,eval=TRUE,include=FALSE}
 library(ggspatial)
 library(magick)
 library(patchwork)
@@ -487,7 +484,7 @@ painel_final
 
 ## Figure 2 from main text: SaTScan-based risk classification of CIRs
 
-```{r fig2, include=TRUE,eval=TRUE ,fig.width=10,fig.height=14}
+```{r fig2, include=FALSE,eval=TRUE ,fig.width=10,fig.height=14}
 lp <- list()
 lp[[1]] <- df_ad %>% 
     group_by(data) %>% 
@@ -789,10 +786,26 @@ f_img("figuras_e_relatorios/figura_ABC_completa.png")
 ## Figure 3 from main text: comparison between model performance and SaTScan-based risk classification of CIRs
 
 
-```{r}
+```{r corrplot, eval=TRUE, include=FALSE}
 library(corrplot)
+library(magick)
 # exemplo:
 # corrplot(M, method = 'ellipse', order = 'AOE', type = 'upper')
+dfp <- df_ad %>% 
+    group_by(data) %>% 
+    summarise(SIG = sum(casos==1)/63,nSIG=sum(casos==0)/63) %>% 
+    pivot_longer(-data) %>% 
+    mutate(name = factor(name,
+                         levels=c("SIG","nSIG"),
+                         labels=c(
+                             "RR > 1",
+                             "RR ≤ 1")
+                         )
+           ) %>% 
+    filter(name=="RR > 1") %>% 
+    rename(propRR = value) %>% 
+    select(-name)
+
 dfp_sepi <- inner_join(
     dfwis_sepi %>% select(-n),
     dfsumm2 %>% 
@@ -800,43 +813,71 @@ dfp_sepi <- inner_join(
       select(-Sensitivity,-BalancedAccuracy),
     by=c("base"="data")
     ) %>% 
-  relocate(method,.after="base") %>% 
-  mutate(method=droplevels(method)) %>% 
-  rename(TPR=TruePositiveRate,FPR=FalsePositiveRate)
+    relocate(method,.after="base") %>% 
+    mutate(method=droplevels(method)) %>% 
+    rename(TPR=TruePositiveRate,FPR=FalsePositiveRate) %>% 
+    select(base:MAE,TPR:FPR,PPV:NPV,Youden) %>% 
+    inner_join(y=.,x=dfp,by=c("data"="base"))
+
 f_gsub <- \(vc){
   gsub("^TP$","True Positive (TP)",vc) %>% 
     gsub("^TN$","True Negative (TN)",.) %>% 
     gsub("^FP$","False Positive (FP)",.) %>% 
     gsub("^FN$","False Negative (FN)",.) %>% 
-    gsub("TruePositiveRate|TPR","True Positive Rate (TPR)",.) %>% 
+    gsub("TruePositiveRate|TPR","TPR",.) %>% 
     gsub("cob50","Pred. Int. 50%",.) %>% 
     gsub("cob95","Pred. Int. 95%",.) %>% 
     gsub("dispersao","Spread",.) %>% 
     gsub("subprev","Underprediction",.) %>% 
     gsub("superprev","Overprediction",.) %>%
-    gsub("PPV","Positive Predictive Value (PPV)",.) %>%
-    gsub("NPV","Nositive Predictive Value (NPV)",.) %>%
-    gsub("FalsePositiveRate|FPR","False Positive Rate (FPR)",.)
+    gsub("PPV","PPV",.) %>%
+    gsub("NPV","NPV",.) %>%
+    gsub("propRR","Prop. RR > 1",.) %>%
+    gsub("FalsePositiveRate|FPR","FPR",.)
 }
+f_padname <- \(mi){
+  colnames(mi) <- f_gsub(colnames(mi))
+  rownames(mi) <- f_gsub(rownames(mi))
+  return(mi)
+}
+
 f_corrplot <- \(vtitle,vw=10,vh=10){
-  dfcor <- filter(dfp_sepi,method==vtitle) %>% 
-    as.data.frame()
-  mcor <- cor(select(dfcor,-base,-method),method = "spearman")
-  colnames(mcor) <- f_gsub(colnames(mcor))
-  rownames(mcor) <- f_gsub(rownames(mcor))
-  vpath <- tempfile(fileext = ".png")
-  png(
-    filename = vpath, 
-    width = vw,
-    height = vh,
-    units = "in",
-    res = 100
-    )
-  corrplot(mcor, method = "ellipse", order = "original", 
-           type = "lower", tl.col = "black",tl.srt = 45) %>% 
-    corrRect(c(1,8,19))
-  dev.off()
-  return(vpath)
+    #
+    pred_vars <- c("WIS", "Spread", "Underprediction", "Overprediction", 
+                   "Pred. Int. 50%","Pred. Int. 95%","MAE","Prop. RR > 1")
+    class_vars <- c("TPR", "FPR","PPV", "NPV","Youden","Prop. RR > 1")
+    #
+    dfcor <- filter(dfp_sepi,method==vtitle) %>% 
+        as.data.frame()
+    #
+    mcor <- cor(select(dfcor,-data,-method),method = "spearman")
+    p_mat <- cor.mtest(select(dfcor,-data,-method), method = "spearman")$p
+    #
+    mcor <- f_padname(mcor)
+    mcor <- mcor[pred_vars,class_vars]
+    mcor["Prop. RR > 1","Prop. RR > 1"] <- NA
+    p_mat <- f_padname(p_mat)
+    p_mat <- p_mat[pred_vars,class_vars]
+    p_mat["Prop. RR > 1","Prop. RR > 1"] <- NA
+    text_colors <- ifelse(is.na(p_mat) | p_mat >= 0.05, "white", "black")
+    #
+    vpath <- tempfile(fileext = ".png")
+    png(
+        filename = vpath, 
+        width = vw,
+        height = vh,
+        units = "in",
+        res = 100
+        )
+    #
+    corrplot(mcor, method = "ellipse", order = "original", 
+             type = "full", tl.col = "black", tl.srt = 0,
+             cl.pos = 'b',na.label = " ",
+             addCoef.col = text_colors, number.cex = 0.8)
+    #
+    dev.off()
+    #
+    return(vpath)
 }
 lpath <- lapply(levels(dfp_sepi$method),f_corrplot)
 names(lpath) <- levels(dfp_sepi$method)
@@ -864,9 +905,11 @@ limg <- lapply(names(lpath),\(li){
   image_append(c(banner_titulo, img), stack = TRUE) %>% 
     image_trim()
   }
-  )
-img_final <- image_append(do.call("c",limg),stack = FALSE)
-image_write(img_final,path = "figuras_e_relatorios/correlation_plot.png")
+ )
+image_write(limg[[2]],
+            path = "figuras_e_relatorios/correlation_plot.png")
+# img_final <- image_append(do.call("c",limg),stack = FALSE)
+# image_write(img_final,path = "figuras_e_relatorios/correlation_plot.png")
 #@ não vejo pq fazer por CIR, pois a classificação do SatSCan é contextual.
 #@ Já a agregação pela unidade espacial remove o contexto temporal.
 dfp_cir <- inner_join(
@@ -888,6 +931,7 @@ dfp_cir <- inner_join(
 ### By week
 
 ```{r}
+library(patchwork)
 lp <- list()
 lp[[1]] <- dfsumm2 %>%
     select(data:FP) %>%
@@ -924,7 +968,7 @@ dfp <- dfsumm2 %>% pivot_longer(Sensitivity:F1) %>%
            ) %>% 
     ungroup()
 lp[[2]] <- dfp %>% 
-  filter(!grepl("Rate|Sensitivity|Balanced",name)) %>% 
+  filter(!grepl("Rate|Sensitivity|F1|Accuracy",name)) %>% 
   # filter(name %in% c("PPV","NPV")) %>% 
     ggplot(aes(x=data,y=value,color=method)) +
     scale_color_manual("",values=c(
@@ -940,10 +984,10 @@ lp[[2]] <- dfp %>%
     theme(legend.position="none",
           strip.text=element_text(color = "black",face = "bold"),
           strip.background = element_rect(fill="white",colour = "black"))
-p <- wrap_plots(lp,ncol=1,
-                heights = c(1,2)) +
+p <- wrap_plots(lp,ncol=1) +
   plot_annotation(tag_levels = 'A')
-p  
+p
+
 # setwd("./metricas_forescan-main/")
 ggsave(filename = "figuras_e_relatorios/metricas_classificacao.png",
        plot=p,
@@ -961,7 +1005,8 @@ f_img("figuras_e_relatorios/metricas_classificacao.png")
 
 ### By CIR
 
-```{r graficos de confusão por CIR,include=TRUE,eval=TRUE}
+```{r graficos de confusão por CIR,include=FALSE,eval=FALSE}
+library(ggspatial)
 f_plot <- \(vcol="TP"){
   vnamefill <- ifelse(
     vcol%in%c("FN","FP","TN","TP"), "% of weeks", vcol
@@ -1033,8 +1078,8 @@ f_plot <- \(vcol="TP"){
                 text = element_text(size=10)
             )
 }
-lp <- lapply(names(dfsumm_cir)[c(5:8,11:16)],f_plot)
-names(lp) <- names(dfsumm_cir)[c(5:8,11:16)]
+lp <- lapply(names(dfsumm_cir)[c(5:8,11:13,15)],f_plot)
+names(lp) <- names(dfsumm_cir)[c(5:8,11:13,15)]
 fggsave <- \(vname){
   pi <- lp[[vname]]
   ggsave(filename = paste0("figuras_e_relatorios/metricas_confusao_por_CIR/",vname,".png"),
@@ -1045,15 +1090,13 @@ fggsave <- \(vname){
          )
 }
 lpath <- lapply(names(lp),fggsave)
-
-
-
+lapply(lpath,f_img)
 ```
 
 
 
 
-```{r graficos por CIR, include=TRUE,eval=TRUE,fig.width=14,fig.height=10}
+```{r graficos por CIR, include=FALSE,eval=FALSE,fig.width=14,fig.height=10}
 dfp <- dfsumm_cir %>% pivot_longer(Sensitivity:F1) %>% 
     mutate(name=factor(name,
                        levels=names(dfsumm2)[c(7:16)])
@@ -1085,42 +1128,125 @@ p
 ```
 
 
+## gráfico extra: TPR e FPR ~ #RR>1_real
+
+```{r}
+dfp <- df_ad %>% 
+    group_by(data) %>% 
+    summarise(SIG = sum(casos==1),nSIG=sum(casos==0)) %>% 
+    pivot_longer(-data) %>% 
+    mutate(name = factor(name,
+                         levels=c("SIG","nSIG"),
+                         labels=c(
+                             "RR > 1",
+                             "RR ≤ 1")
+                         )
+           ) %>% 
+    filter(name=="RR > 1") %>% 
+    rename(RRmaior1 = value) %>% 
+    select(-name)
+dfp <- inner_join(
+    dfp,
+    select(dfsumm2,contains("Rate"),data:method)
+    ) %>% 
+    pivot_longer(contains("Rate")) %>% 
+    mutate(
+        name=case_when(
+            grepl("True",name) ~ "TPR",
+            grepl("False",name) ~ "FPR"),
+        name=factor(name,levels=c("TPR","FPR")),
+        RRmaior1=RRmaior1/63
+        )
+dfp %>% 
+    ggplot(aes(x=RRmaior1,y=value)) +
+    geom_point() +
+    geom_smooth(se=FALSE,method="lm") +
+    facet_grid(method~name)
+```
+
+
+
 
 ## Method performance evaluation metrics
 
-```{r resumo-das-metricas,echo=FALSE}
+```{r resumo-das-metricas,echo=FALSE,eval=FALSE,include=FALSE}
+f_across <- \(vx){
+    vavg <- mean(vx)
+    vsd <- sd(vx)
+    paste0(sprintf("%.2f", vavg), " (", sprintf("%.2f", vsd), ")")
+
+}
 dftab <- dfsumm2 %>%  
     group_by(method) %>% 
     summarise(
-        # `Sensitivity availability, n (%)` =
-        #     sprintf("%d (%.1f%%)",
-        #             sum(!is.na(Sensitivity)),
-        #             100 * mean(!is.na(Sensitivity))),
-        across(
-            c(Sensitivity,
-              Specificity,
-              PPV,
-              NPV#,
-              #Accuracy,
-              #BalancedAccuracy,
-              #Youden
-              ),
-            ~ mean(.x, na.rm = TRUE)
-            ),
+        across(.cols = c(TruePositiveRate,
+                         FalsePositiveRate,
+                         Specificity,
+                         PPV,
+                         NPV,
+                         Accuracy,
+                         #BalancedAccuracy,
+                         Youden,
+                         F1
+                         ),
+               .fns = f_across
+               ),
         .groups = "drop"
+        ) %>% 
+    mutate(
+        method=case_when(
+            grepl("Stand",method) ~ "Std. Bayesian prediction",
+            grepl("Movin",method) ~ "MA Bayesian prediction",
+            grepl("Naiv",method) ~ "Naive baseline"),
+        method=factor(method,
+                      levels=c("Std. Bayesian prediction",
+                               "MA Bayesian prediction",
+                               "Naive baseline"))
+        
         )
 ft_metricas <- 
   flextable(dftab) |>
   theme_booktabs() |>
   # Tamanho e fonte
-  fontsize(size = 10, part = "all") |>
-  font(fontname = "Arial", part = "all") |>
+  fontsize(size = 14, part = "all") |>
+  height(height = 0.8) %>%
+font(fontname = "Arial", part = "all") |>
   # Alinhamentos
   align(align = "center", part = "header") |>
   bold(part = "header") |>
+    set_header_labels(
+    method = "Method",
+    TruePositiveRate = "TPR",
+    FalsePositiveRate = "FPR",
+    Specificity = "Specificity",
+    PPV = "PPV",
+    NPV = "NPV",
+    Accuracy = "Accuracy",
+    Youden = "Youden",
+    F1 = "F1"
+  ) %>% 
   set_table_properties(layout = "autofit") |>
-  set_caption("Sumamry of the method evaluation performance metrics used to evaluate nowcasting.") %>% 
+  # set_caption("Summary of classification performance metrics for nowcasting methods. Values = average (Standard Deviation)") %>% 
+  #   set_caption(
+  #   "Table 1. Summary of classification performance metrics for nowcasting methods.<br>
+  #   <span style='font-weight:normal;'>Values represent the mean (standard deviation) of each metric across all epidemiological weeks and CIRs, calculated separately for the standard Bayesian nowcast and the smoothed Bayesian nowcast (three-week moving average). Metrics include: True Positive Rate (TPR, sensitivity), False Positive Rate (FPR, 1 - specificity), Specificity, Positive Predictive Value (PPV), Negative Predictive Value (NPV), Accuracy, Youden's Index, and F1 score. Higher values indicate better performance for all metrics except FPR, where lower values are desirable.</span>"
+  # ) %>% 
   autofit()
 ft_metricas
+save_as_image(ft_metricas, 
+              "figuras_e_relatorios/tab1_sumario.png", 
+              zoom = 3,
+              webshot = list(vwidth = 1500, vheight = 1000)
+)
+```
+
+```{r}
+f_img <- \(imgpath){
+    vimg <- image_read(imgpath) %>%
+        image_trim()
+    image_write(vimg,imgpath)
+}
+f_img("figuras_e_relatorios/esquema_trabalho.png")
+
 ```
 
