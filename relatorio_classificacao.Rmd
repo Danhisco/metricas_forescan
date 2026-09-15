@@ -19,6 +19,11 @@ editor_options:
   chunk_output_type: console
 ---
 
+CSV teste t: G:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/08_manuscritos/Artigo_ForScan/2_output/table_t_test.csv
+SHAPEfiles brasil e estados: G:\CCD\CVE\RESPIRATORIAS\11_MAPAS\Mapa_projeto\Arquivos\Estados
+
+
+
 ```{r setup, message=FALSE,warning=FALSE, echo=FALSE, cache = FALSE, include=TRUE, eval=TRUE}
 knitr::opts_chunk$set(echo = FALSE,eval = TRUE,message = FALSE,warning = FALSE,cache=TRUE,include=TRUE,
                       fig.pos = "H", fig.show = "hold",
@@ -30,17 +35,26 @@ library(readxl)
 library(sf)
 library(officer)
 library(flextable)
+library(ggspatial)
+library(magick)
+library(patchwork)
+library(cowplot)
 ####### dados gerais #########
 # cir <- cir |> select(Cod6, RS_CIR, COD_CIR)|> rename(CO_MUN_RES=Cod6)
-mapa_cir<-read_sf("G:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/00_dados_auxiliares/CIR/CIR_UTM.shp")
+mapa_cir<-read_sf("X:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/00_dados_auxiliares/CIR/CIR_UTM.shp")
 names(mapa_cir) <- tolower(names(mapa_cir))
 mapa_cir <- rename(mapa_cir,cod_space=cod_cir)
+mapa_cir <- st_transform(mapa_cir, crs = 4326)
+# SIRGA2000 ou WGS84
+
 
 # WIS e cobertura
-dfwis_cir <- read_csv("dados/ForeScan/Indicadores/indicador_por_municipio.csv") %>% 
+dfwis_cir <- read_csv("X:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/dados/ForeScan/Indicadores/indicador_por_municipio.csv") %>% 
   select(-1)
-dfwis_sepi <- read_csv("dados/ForeScan/Indicadores/indicador_base.csv") %>% 
+dfwis_sepi <- read_csv("X:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/dados/ForeScan/Indicadores/indicador_base.csv") %>% 
   select(-1)
+
+ldf_fig2 <- readRDS("X:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/dados/ldf_fig2.rds")
 
 # classificação do satscan
 df_ad0 <- read_csv2("dados/tab_tudo_RR.csv")
@@ -170,7 +184,7 @@ dfsumm_cir <- mutate(dfsumm_cir,
                      F1 = ifelse(is.na(F1),0,F1))
 dfsumm_cir <- left_join(mapa_cir,dfsumm_cir,by=c("cod_space"="COD_CIR"))
 ```
-```{r eval=FALSE,include=FALSE}
+```{r auditoria interna, eval=FALSE,include=FALSE, echo=FALSE}
 df_aud %>% 
   filter(PPV==1,grepl("Naive",method)) %>% 
   select(method:Sensitivity,PPV,Real.Pos,Real.Neg)
@@ -195,7 +209,9 @@ SaTScan statistics is the gold standard for territorial classification based on 
 
 SaTScan was applied to the consolidated ground-truth data, the naive observations, and two Bayesian predictions (the standard median and the moving average of the median). 
 
-Results were aggregated by epidemiological week and method, yielding four potential prediction outcomes:
+Results were aggregated by epidemiological week and method, yielding four potential prediction outcomes:  
+  
+    
 - True Positive (TP): The method correctly identifies a significant $\text{RR} > 1$.
 
 - True Negative (TN): The method correctly identifies a significant $\text{RR} \le 1$.
@@ -219,6 +235,17 @@ __Positive Predictive Value (PPV)__ and __Negative Predictive Value (NPV)__ eval
 
 Additionally, to account for potential class imbalances across epidemiological weeks, we computed overall performance measures, including Accuracy, Balanced Accuracy, and Youden's Index. The mathematical definitions, descriptions, and epidemiological interpretations for all metrics are summarized in Table 1.
 
+```{r}
+oname <- load("G:/CCD/CVE/RESPIRATORIAS/13_PROJ_SARAMPO/4_bases/pop_sarampo_novo.RData")
+dfpop <- get(oname);rm(list=oname);gc()
+dfpop <- dfpop %>% 
+    filter(Ano==2023) %>% 
+    group_by(ID_MUN) %>% 
+    summarise(pop = sum(POP))
+
+
+```
+
 
 
 ```{r tab-descricao-metricas, echo=FALSE}
@@ -230,8 +257,8 @@ tb_metrics <- tibble(
     "Specificity",
     "Positive Predictive Value (PPV)",
     "Negative Predictive Value (NPV)",
-    "F1-score",
-    "Accuracy",
+    #"F1-score",
+    #"Accuracy",
     #"Balanced accuracy",
     "Youden's index"
   ),
@@ -242,8 +269,8 @@ tb_metrics <- tibble(
     "TN / (TN + FP)", # Spec
     "TP / (TP + FP)", # PPV
     "TN / (TN + FN)" , # NPV
-    "2 × (PPV × TPR) / (PPV + TPR)", # F1-score (ou 2 × TP / (2 × TP + FP + FN))
-    "(TP + TN) / (TP + TN + FP + FN)", # Accuracy
+    #"2 × (PPV × TPR) / (PPV + TPR)", # F1-score (ou 2 × TP / (2 × TP + FP + FN))
+    #"(TP + TN) / (TP + TN + FP + FN)", # Accuracy
     #"(Sensitivity + Specificity) / 2", 
     "TPR − FPR" # Youden
   ),
@@ -254,8 +281,8 @@ tb_metrics <- tibble(
     "Proportion of real negatives correctly identified.", #Spec
     "Probability that a positive classification corresponds to a true positive.", #PPV
     "Probability that a negative classification corresponds to a true negative.", # NPV
-    "Harmonic mean of precision (PPV) and recall (TPR).", # F1-score
-    "Overall proportion of correctly classified observations.", # accur
+    #"Harmonic mean of precision (PPV) and recall (TPR).", # F1-score
+    #"Overall proportion of correctly classified observations.", # accur
     #"Average of sensitivity and specificity.",
     "Difference between true alarms and false alarms." # youden
   ),
@@ -266,8 +293,8 @@ tb_metrics <- tibble(
     "Ability of the method to detect RR ≤ 1.",
     "Reliability of positive classifications generated by the method.",
     "Reliability of negative classifications generated by the method.",
-    "Overall performance in detecting high-risk events (RR > 1) while minimizing false alarms.", # F1-score
-    "Overall percentage of classifications consistent with the reference.",
+    #"Overall performance in detecting high-risk events (RR > 1) while minimizing false alarms.", # F1-score
+    #"Overall percentage of classifications consistent with the reference.",
     #"Summarizes performance across both classes, even when they are imbalanced.",
     "Values close to 1 indicate excellent discriminatory performance."
   )
@@ -308,10 +335,6 @@ ft_metricas
 Model evaluation metrics: cover percentage and WIS decomposition
 
 ```{r fig1-main-text,eval=TRUE,include=FALSE}
-library(ggspatial)
-library(magick)
-library(patchwork)
-library(cowplot)
 f_imgtoggplot <- function(caminho_imagem, largura_px = 2000) {
   img <- image_read(caminho_imagem) %>% 
     image_trim() %>% 
@@ -1184,10 +1207,10 @@ dftab <- dfsumm2 %>%
                          Specificity,
                          PPV,
                          NPV,
-                         Accuracy,
+                         #Accuracy,
                          #BalancedAccuracy,
-                         Youden,
-                         F1
+                         Youden#,
+                         #F1
                          ),
                .fns = f_across
                ),
