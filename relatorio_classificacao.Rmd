@@ -235,18 +235,6 @@ __Positive Predictive Value (PPV)__ and __Negative Predictive Value (NPV)__ eval
 
 Additionally, to account for potential class imbalances across epidemiological weeks, we computed overall performance measures, including Accuracy, Balanced Accuracy, and Youden's Index. The mathematical definitions, descriptions, and epidemiological interpretations for all metrics are summarized in Table 1.
 
-```{r}
-oname <- load("G:/CCD/CVE/RESPIRATORIAS/13_PROJ_SARAMPO/4_bases/pop_sarampo_novo.RData")
-dfpop <- get(oname);rm(list=oname);gc()
-dfpop <- dfpop %>% 
-    filter(Ano==2023) %>% 
-    group_by(ID_MUN) %>% 
-    summarise(pop = sum(POP))
-
-
-```
-
-
 
 ```{r tab-descricao-metricas, echo=FALSE}
 tb_metrics <- tibble(
@@ -330,9 +318,48 @@ ft_metricas
 
 # Results
 
-## Figure 1 from main text
+## Figure 2 from main text
 
 Model evaluation metrics: cover percentage and WIS decomposition
+
+```{r codigos da Tati para integrar na pipeline}
+# cobertura:
+ggplot(mapping = aes(x, y)) +
+    geom_bar(data=base, aes(y=cob95  ,x=base, fill="95%"), stat = 'identity') +
+    geom_bar(data=base, aes(y=cob50  ,x=base, fill="50%"), stat = 'identity') +
+    scale_fill_manual(values = c(
+        "95%"= 'skyblue1',
+        "50%"='royalblue3'))+
+    labs(fill = 'Prediction Interval')+
+    scale_x_discrete(guide = guide_axis(angle = 45))+
+    geom_hline(yintercept = 95, col = "darkred", linetype='dotted', size=1)+
+    geom_hline(yintercept = 50, col = "red", linetype='dotted', size=1)+
+    theme_bw()+
+    theme(legend.position = "top", axis.text=element_text(size=15),
+          axis.text.x = element_text(size=12),
+          legend.text = element_text(size=13),
+          axis.title.y = element_text(size=15),
+          legend.title = element_text(size=15)
+    )+
+    labs(x="", y="Empirical coverage")
+
+
+# wis:
+full_base %>%
+    ggplot(aes(x = base, y= components, fill = WIS)) +
+    geom_bar(stat = "identity")+
+    scale_fill_manual("Decomposition WIS",values=c('pink','lightpink3','lightpink4'))+
+    theme_bw()+
+    scale_x_discrete(guide = guide_axis(angle = 45))+
+    theme(legend.position = "top", legend.title = element_blank(),
+          axis.text=element_text(size=12), legend.text = element_text(size=15),
+          axis.title.y = element_text(size=15),
+          axis.text.x = element_text(size=12))+
+    labs(x="", y="Median WIS")
+```
+
+
+
 
 ```{r fig1-main-text,eval=TRUE,include=FALSE}
 f_imgtoggplot <- function(caminho_imagem, largura_px = 2000) {
