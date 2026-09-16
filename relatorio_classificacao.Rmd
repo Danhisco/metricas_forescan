@@ -33,6 +33,9 @@ library(magrittr)
 library(tidyverse)
 library(readxl)
 library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(geobr)
 library(officer)
 library(flextable)
 library(ggspatial)
@@ -49,10 +52,21 @@ mapa_cir <- st_transform(mapa_cir, crs = 4326)
 
 
 # WIS e cobertura
-dfwis_cir <- read_csv("X:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/dados/ForeScan/Indicadores/indicador_por_municipio.csv") %>% 
+dfwis_cir <- read_csv("X:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/08_manuscritos/Artigo_ForScan/2_output/material_paper/indicador_por_municipio.csv") %>% 
+    select(-1)
+dfwis_sepi <- read_csv("X:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/08_manuscritos/Artigo_ForScan/2_output/material_paper/indicador_base.csv") %>% 
   select(-1)
-dfwis_sepi <- read_csv("X:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/dados/ForeScan/Indicadores/indicador_base.csv") %>% 
-  select(-1)
+
+# ############## avaliação do WIS pela incidência
+# dfwis_cir <- read_csv("X:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/08_manuscritos/Artigo_ForScan/2_output/material_paper/indicador_por_municipio.csv") %>% 
+#     select(-1)
+# # dfaud <- inner_join(x=dfwis_cir,y=teste_wis,by="cir")
+# # dfaud %>% 
+# #     ggplot(aes(x=WIS.x,y=WIS.y)) +
+# #     geom_point() +
+# #     labs(x="anterior",y="atual")
+# 
+# ########
 
 ldf_fig2 <- readRDS("X:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/dados/ldf_fig2.rds")
 
@@ -322,7 +336,7 @@ ft_metricas
 
 Model evaluation metrics: cover percentage and WIS decomposition
 
-```{r codigos da Tati para integrar na pipeline}
+```{r codigos da Tati para integrar na pipeline, echo=FALSE, eval=FALSE, include=FALSE}
 # cobertura:
 ggplot(mapping = aes(x, y)) +
     geom_bar(data=base, aes(y=cob95  ,x=base, fill="95%"), stat = 'identity') +
@@ -356,6 +370,78 @@ full_base %>%
           axis.title.y = element_text(size=15),
           axis.text.x = element_text(size=12))+
     labs(x="", y="Median WIS")
+# estudo para figura com a localização 
+# install.packages(c("geobr", "sf", "ggplot2", "cowplot", "patchwork", "dplyr"))
+
+
+# ---------------------------------------------------------------
+# 1. Baixar geometrias
+# ---------------------------------------------------------------
+
+# América do Sul (Natural Earth via rnaturalearth, ou geobr não tem SA)
+# install.packages("rnaturalearth"); install.packages("rnaturalearthdata")
+
+keep_mainland <- function(x) {
+  x %>%
+    st_cast("POLYGON") %>%
+    mutate(area = st_area(.)) %>%
+    group_by(across(-c(area, geometry))) %>%
+    slice_max(area, n = 1) %>%
+    ungroup() %>%
+    st_as_sf() %>%
+    st_union() %>%
+    st_sf()
+}
+south_america <- ne_countries(scale = "medium", 
+                              continent = "South America",
+                              returnclass = "sf") %>% 
+    keep_mainland()
+
+brazil <- read_country(year = 2020) %>% keep_mainland()
+states <- read_state(year = 2020) %>% keep_mainland()
+sp_state <- states %>% filter(abbrev_state == "SP")
+p_sa <- ggplot() +
+    geom_sf(data = south_america, fill = "grey90", color = "white", size = 0.2) +
+    geom_sf(data = brazil, fill = "grey60", color = "white", size = 0.3) +
+    geom_sf(data = sp_state, fill = "#D73027", color = "white", size = 0.3) +
+    coord_sf(xlim = c(-85, -30), ylim = c(-60, 15), expand = FALSE) +
+    annotation_north_arrow(
+        location = "tr",           # top-right
+        which_north = "true",
+        style = north_arrow_fancy_orienteering(
+            fill = c("white", "grey30"),
+            line_col = "grey30",
+            text_col = "grey30"
+            ),
+        height = unit(1.2, "cm"),
+        width  = unit(1.2, "cm")
+        ) +
+    theme_minimal() +
+    theme(panel.background = element_rect(fill = "white", color = NA))
+
+# ---------------------------------------------------------------
+# 3. Mapa do Brasil com SP destacado
+# ---------------------------------------------------------------
+
+p_br <- ggplot() +
+  geom_sf(data = states, fill = "grey90", color = "white", size = 0.2) +
+  geom_sf(data = sp_state, fill = "#D73027", color = "white", size = 0.3) +
+  coord_sf(expand = FALSE) +
+  theme_void() +
+  theme(panel.background = element_rect(fill = "white", color = NA))
+
+# ---------------------------------------------------------------
+# 4. Combinar com inset (América do Sul dentro do mapa do Brasil)
+# ---------------------------------------------------------------
+
+p_inset <- ggdraw(p_br) +
+  draw_plot(
+    p_sa,
+    x = 0.02, y = 0.60,      # posição (canto inferior esquerdo superior)
+    width = 0.35, height = 0.35
+  )
+
+
 ```
 
 
@@ -371,6 +457,7 @@ f_imgtoggplot <- function(caminho_imagem, largura_px = 2000) {
   ggdraw() + draw_image(img)
 }
 # primeiro cobertura e depois 
+size_legtex <- 12
 lp <- list()
 # figura construida pela Tatiana e adaptada aqui:
 vsepi <- dfwis_sepi$base %>% unique %>% sort() %>% as.character()
@@ -391,30 +478,27 @@ dfp <- dfwis_sepi %>%
     )
   )
   #f_imgtoggplot("~/Documentos/projeto_DOC/SRAG/artigos/metricas_forescan/pasta_tati_forescan/Indicadores/coverage_base.png")
-lp[[1]] <- dfp %>%
-  ggplot(aes(x = sepi, y = valor, fill = cobertura)) +
-    geom_col(position = "identity",alpha=0.85) +
-    scale_fill_manual(
-      values = c(
-        "50%" = "darkblue",
-        "95%" = "#33CCFF" 
-      )
-    ) +
-  geom_hline(yintercept = c(50,95),color="darkred",linetype=2) +
-    labs(
-      x = "",
-      y = "Empirical coverage",
-      fill = "Prediction interval"
-    ) +
-    theme_bw() +
-    theme(
-      text=element_text(size=10),
-      panel.grid.minor = element_blank(),
-      panel.grid.major.x = element_blank(),
-      axis.text.x = element_text(angle = 45, hjust = 1,face="bold"),
-      legend.position = "top",
-      strip.background = element_rect(fill = "white")
-    )
+base <- ldf_fig2[["cob"]]
+lp[[1]] <- ggplot(mapping = aes(x, y)) +
+    geom_bar(data=base, aes(y=cob95  ,x=base, fill="95%"), stat = 'identity') +
+    geom_bar(data=base, aes(y=cob50  ,x=base, fill="50%"), stat = 'identity') +
+    scale_fill_manual(values = c(
+        "95%"= 'skyblue1',
+        "50%"='royalblue3'))+
+    labs(fill = 'Prediction Interval')+
+    scale_x_discrete(guide = guide_axis(angle = 45))+
+    geom_hline(yintercept = 95, col = "darkred", linetype='dotted', linewidth=1)+
+    geom_hline(yintercept = 50, col = "red", linetype='dotted', linewidth=1)+
+    theme_bw()+
+    theme(legend.position = "top", axis.text=element_text(size=15),
+          axis.text.x = element_text(size=12),
+          legend.text = element_text(size=13),
+          axis.title.y = element_text(size=15),
+          legend.title = element_text(size=size_legtex),
+          legend.margin  = margin(0, 0, 0, 0),
+          legend.box.margin = margin(0, 0, 0, 0),
+          legend.spacing = unit(0, "pt") )+
+    labs(x="", y="Empirical coverage")
 # figura com os mapas por cobertura
 lp[[2]] <- dfwis_cir %>% 
   select(starts_with("cob")) %>% 
@@ -428,104 +512,212 @@ lp[[2]] <- dfwis_cir %>%
     facet_wrap(~name,ncol=2) +
   # 1. Ajuste dos eixos para não ter sobras (margens zeradas)
     coord_sf(expand = FALSE) +
-    # 2. Adiciona a Barra de Escala (canto inferior esquerdo)
-    annotation_scale(
-      location = "bl", 
-      width_hint = 0.3,
-      style = "ticks"
-    ) +
-    # 3. Adiciona o Norte (canto superior direito)
-    annotation_north_arrow(
-      location = "tr", 
-      which_north = "true",
-      pad_x = unit(0.15, "in"), 
-      pad_y = unit(0.15, "in"),
-      height = unit(0.8, "cm"),  # Reduz o tamanho da seta
-      width = unit(0.8, "cm"),
-      style = north_arrow_orienteering(
-        fill = c("black", "white"),
-        line_col = "black",
-        text_size = 7
-        )
-      ) +
-    # 4. Manutenção do tema limpo para mapas
     theme_bw() +
     theme(
-      legend.position="top",
+      legend.position="bottom",
       panel.grid = element_blank(),
-      axis.text = element_blank(),
-      axis.ticks = element_blank(),
+      legend.title = element_text(size=size_legtex),
+      legend.margin  = margin(0, 0, 0, 0),
+      legend.box.margin = margin(0, 0, 0, 0),
+      legend.spacing = unit(0, "pt"),
       strip.background = element_rect(fill = "white"),
-      strip.text = element_text(face = "bold",size=12),
+      strip.text = element_text(face = "bold",
+                                size = 12,
+                                margin = margin()),
       text = element_text(size=10)
     )
-lp[[3]] <- f_imgtoggplot("dados/ForeScan/Indicadores/wis_base.png")
+# lp[[3]] <- f_imgtoggplot("dados/ForeScan/Indicadores/wis_base.png")
+full_base <- ldf_fig2[["wis"]]
+lp[[3]] <- full_base %>%
+    ggplot(aes(x = base, y= components, fill = WIS)) +
+    geom_bar(stat = "identity")+
+    scale_fill_manual("Decomposition WIS",values=c('pink','lightpink3','lightpink4'))+
+    theme_bw()+
+    scale_x_discrete(guide = guide_axis(angle = 45))+
+    theme(legend.position = "top", 
+          legend.title = element_blank(),
+          legend.margin  = margin(0, 0, 0, 0),
+          legend.box.margin = margin(0, 0, 0, 0),
+          legend.spacing = unit(0, "pt"),
+          axis.text=element_text(size=12), 
+          legend.text = element_text(size=size_legtex),
+          axis.title.y = element_text(size=13),
+          axis.text.x = element_text(size=12))+
+    labs(x="", y="Median WIS")
 lp[[4]] <- dfwis_cir %>% 
-  select(dispersao:subprev) %>% 
-  pivot_longer(dispersao:subprev) %>% 
+  select(dispersao:superprev) %>% 
+  pivot_longer(dispersao:superprev) %>% 
   mutate(name = factor(name,
-                       levels=c("dispersao","subprev"),
-                       labels=c("spread","underprediction"))) %>% 
-  ggplot(aes(fill=log(value))) +
+                       levels=c("dispersao","subprev","superprev"),
+                       labels=c("Spread","Underprediction","Overprediction"))) %>% 
+  ggplot(aes(fill=value)) +
     geom_sf(color="white") +
     scale_fill_gradient(
-      low = "#568203", 
-      high = "red",
-      name = "log(WIS component)"
+      low = "#005AB5", 
+      high = "#DC3220",
+      name = "WIS component"
       ) +
     facet_wrap(~name,nrow=1) +
     # 1. Ajuste dos eixos para não ter sobras (margens zeradas)
     coord_sf(expand = FALSE) +
-    # 2. Adiciona a Barra de Escala (canto inferior esquerdo)
-    annotation_scale(
-      location = "bl", 
-      width_hint = 0.3,
-      style = "ticks"
-    ) +
-    # 3. Adiciona o Norte (canto superior direito)
-    annotation_north_arrow(
-      location = "tr", 
-      which_north = "true",
-      pad_x = unit(0.15, "in"), 
-      pad_y = unit(0.15, "in"),
-      height = unit(0.8, "cm"),  # Reduz o tamanho da seta
-      width = unit(0.8, "cm"),
-      style = north_arrow_orienteering(
-        fill = c("black", "white"),
-        line_col = "black",
-        text_size = 7
-        )
-      ) +
-    # 4. Manutenção do tema limpo para mapas
     theme_bw() +
     theme(
-      legend.position="top",
+      legend.position="bottom",
       panel.grid = element_blank(),
-      axis.text = element_blank(),
-      axis.ticks = element_blank(),
+      legend.title = element_text(size=size_legtex),
+      legend.margin  = margin(0, 0, 0, 0),
+      legend.box.margin = margin(0, 0, 0, 0),
+      legend.spacing = unit(0, "pt"),
       strip.background = element_rect(fill = "white"),
-      strip.text = element_text(face = "bold",size=12),
+      strip.text = element_text(face = "bold",
+                                size = 12,
+                                margin = margin()),
       text = element_text(size=10)
     )
-painel_final <- wrap_plots(
-  lp[c(1,3,2,4)], 
-  ncol = 2, 
-  widths = c(1, 1)
-  ) + 
-  plot_annotation(tag_levels = 'A')
-vpath <- ggsave(filename = "figuras_e_relatorios/fig1_md_perf.png",
-                plot=painel_final,
-                dpi=200,
-                width=14,
-                height=10)
-library(magick)
+#
+keep_mainland <- function(x) {
+  x %>%
+    st_cast("POLYGON") %>%
+    mutate(area = st_area(.)) %>%
+    group_by(across(-c(area, geometry))) %>%
+    slice_max(area, n = 1) %>%
+    ungroup() %>%
+    st_as_sf() %>%
+    st_union() %>%
+    st_sf()
+}
+south_america <- ne_countries(scale = "medium", 
+                              continent = "South America",
+                              returnclass = "sf") %>% 
+    keep_mainland()
+
+brazil <- read_country(year = 2020) %>% keep_mainland()
+sp_state <- read_state(year = 2020,code_state = "SP") %>% keep_mainland()
+lp[[5]] <- ggplot() +
+    geom_sf(data = south_america, aes(fill = "South America"),
+            color = "white", size = 0.2) +
+    geom_sf(data = brazil, aes(fill = "Brazil"),
+            color = "white", size = 0.3) +
+    geom_sf(data = sp_state, aes(fill = "São Paulo State"),
+            color = "white", size = 0.3) +
+    scale_fill_manual(
+        name = NULL,
+        values = c(
+            "South America"   = "grey90",
+            "Brazil"          = "grey60",
+            "São Paulo State" = "#D73027"
+            ), breaks = c("South America", "Brazil", "São Paulo State")) +
+    coord_sf(xlim = c(-85, -30), ylim = c(-54, 11.5), expand = FALSE) +
+    annotation_north_arrow(
+        location = "tr",           # top-right
+        which_north = "true",
+        style = north_arrow_fancy_orienteering(
+            fill = c("white", "grey30"),
+            line_col = "grey30",
+            text_col = "grey30"
+            ),
+        height = unit(1.2, "cm"),
+        width  = unit(1.2, "cm")
+        ) +
+    theme_bw() +
+    theme(panel.background = element_rect(fill = "white", color = NA),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          legend.position = "right",
+          legend.margin  = margin(0, 0, 0, 0),
+          legend.box.margin = margin(0, 0, 0, 0),
+          legend.spacing = unit(0, "pt"))
+
+
+#
+#
+#
+#@---- estratégia antiga ----#@
+# layout <- "
+# ABBB
+# CDDE
+# "
+# painel_final <- wrap_plots(
+#   lp[c(3,4,1,2,5)], 
+#   design = layout
+#   ) + 
+#   plot_annotation(tag_levels = 'A')
+# vpath <- ggsave(filename = "figuras_e_relatorios/fig1_md_perf.png",
+#                 plot=painel_final,
+#                 dpi=200,
+#                 width=14,
+#                 height=10)
+#
+#
+#
+#@--- estratégia nova ---@#
+names(lp) <- c("C","D","A","B","E")
 f_img <- \(imgpath){
     vimg <- image_read(imgpath) %>%
         image_trim()
     image_write(vimg,imgpath)
 }
-f_img(vpath)
-painel_final
+f_ggsave <- \(vname){
+    if(vname %in% c("C","A","E")){
+        vw <- 7
+        vh <- 6.5
+    }else if(vname=="B"){
+        vw <- 21
+        vh <- 6.5
+    }else{
+        vw <- 14
+        vh <- 6.5
+    }
+    p <- lp[[vname]] + ggtitle(paste0(vname,")"))
+    vpath <- tempfile(fileext = ".png")
+    ggsave(filename = vpath,
+           plot=p,
+           width = vw,
+           height = vh,
+           dpi=200)
+    f_img(vpath)
+    # image_read(vpath)
+    return(vpath)
+}
+lpath <- lapply(names(lp),f_ggsave)
+limg <- lapply(lpath,image_read)
+names(limg) <- names(lp)
+limg <- limg[LETTERS[1:5]]
+
+# --- Parâmetros globais ---
+W <- 3000          # largura total comum às duas linhas (pixels)
+H <- 800           # altura comum às duas linhas (pixels)
+bg <- "white"      # cor do padding
+# --- Função: redimensiona para largura fixa, mantém aspect, faz padding até altura fixa ---
+fit_cell <- function(img, vw, vh, bg = "white") {
+  # Redimensiona mantendo aspect ratio, encaixando na célula width x height
+  image_resize(img, geometry = paste0(vw, "x", vh))
+  # Expande o canvas até width x height, centralizado, com padding
+}
+w_A <- round(W * 1/4)
+w_B <- round(W * 3/4)
+
+row1 <- image_append(c(
+  fit_cell(limg$A, w_A, H, bg),
+  fit_cell(limg$B, w_B, H, bg)
+), stack = FALSE)
+
+# --- Linha 2: C (1/4) + D (2/4) + E (1/4) ---
+w_C <- round(W * 1/4)
+w_D <- round(W * 2/4)
+w_E <- round(W * 1/4)
+
+row2 <- image_append(c(
+  fit_cell(limg$C, w_C, H, bg),
+  fit_cell(limg$D, w_D, H, bg),
+  # image_extent(img, geometry = paste0(vw, "x", vh),
+  #               gravity = "center", color = bg)
+  image_resize(limg$E,"x673")
+), stack = FALSE)
+
+fig_final <- image_append(c(row1, row2), stack = TRUE) %>% 
+    image_trim()
+image_write(image = fig_final,path = "figuras_e_relatorios/fig1_md_perf.png")
 ```
 
 
@@ -1220,6 +1412,18 @@ dfp %>%
 ## Method performance evaluation metrics
 
 ```{r resumo-das-metricas,echo=FALSE,eval=FALSE,include=FALSE}
+df_ttest <- read_csv2("X:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/08_manuscritos/Artigo_ForScan/2_output/table_t_test.csv") %>% 
+    filter(!id%in%c("sup","sup_mv") & !is.na(ttest)) %>% 
+    mutate(method = factor(id,
+                           levels=c("Mdn","Mdn_mv","obs"),
+                           labels=c("Std Median",
+                                    "MA Median",
+                                    "Naive baseline")),
+           ttest = as.numeric(ttest),
+           p.value = sprintf("%.2f", as.numeric(p.value)),
+           label = paste0(sprintf("%.2f", ttest), " (", p.value, ")")
+           ) %>% 
+    select(method,label)
 f_across <- \(vx){
     vavg <- mean(vx)
     vsd <- sd(vx)
@@ -1245,27 +1449,29 @@ dftab <- dfsumm2 %>%
         ) %>% 
     mutate(
         method=case_when(
-            grepl("Stand",method) ~ "Std. Bayesian prediction",
-            grepl("Movin",method) ~ "MA Bayesian prediction",
+            grepl("Stand",method) ~ "Std Median",
+            grepl("Movin",method) ~ "MA Median",
             grepl("Naiv",method) ~ "Naive baseline"),
         method=factor(method,
-                      levels=c("Std. Bayesian prediction",
-                               "MA Bayesian prediction",
+                      levels=c("Std Median",
+                               "MA Median",
                                "Naive baseline"))
         
-        )
-ft_metricas <- 
-  flextable(dftab) |>
-  theme_booktabs() |>
-  # Tamanho e fonte
-  fontsize(size = 14, part = "all") |>
-  height(height = 0.8) %>%
-font(fontname = "Arial", part = "all") |>
-  # Alinhamentos
-  align(align = "center", part = "header") |>
-  bold(part = "header") |>
+        ) %>% 
+    inner_join(df_ttest) %>% 
+    relocate(label,.before=TruePositiveRate)
+ft_metricas <- flextable(dftab) |>
+    theme_booktabs() |>
+    # Tamanho e fonte
+    fontsize(size = 14, part = "all") |>
+    height(height = 0.8) %>%
+    font(fontname = "Arial", part = "all") |>
+    # Alinhamentos
+    align(align = "center", part = "header") |>
+    bold(part = "header") |>
     set_header_labels(
     method = "Method",
+    label = "t-test",
     TruePositiveRate = "TPR",
     FalsePositiveRate = "FPR",
     Specificity = "Specificity",
@@ -1276,18 +1482,34 @@ font(fontname = "Arial", part = "all") |>
     F1 = "F1"
   ) %>% 
   set_table_properties(layout = "autofit") |>
+  autofit()
   # set_caption("Summary of classification performance metrics for nowcasting methods. Values = average (Standard Deviation)") %>% 
   #   set_caption(
   #   "Table 1. Summary of classification performance metrics for nowcasting methods.<br>
   #   <span style='font-weight:normal;'>Values represent the mean (standard deviation) of each metric across all epidemiological weeks and CIRs, calculated separately for the standard Bayesian nowcast and the smoothed Bayesian nowcast (three-week moving average). Metrics include: True Positive Rate (TPR, sensitivity), False Positive Rate (FPR, 1 - specificity), Specificity, Positive Predictive Value (PPV), Negative Predictive Value (NPV), Accuracy, Youden's Index, and F1 score. Higher values indicate better performance for all metrics except FPR, where lower values are desirable.</span>"
   # ) %>% 
-  autofit()
 ft_metricas
 save_as_image(ft_metricas, 
               "figuras_e_relatorios/tab1_sumario.png", 
               zoom = 3,
               webshot = list(vwidth = 1500, vheight = 1000)
 )
+
+library(officer)
+
+sect_properties <- prop_section(
+  page_size = page_size(orient = "landscape", width = 11.7, height = 8.3),
+  type = "continuous",
+  page_margins = page_mar()
+)
+
+save_as_docx(
+  ft_metricas,
+  path = "figuras_e_relatorios/tabela_metricas.docx",
+  pr_section = sect_properties
+)
+
+
 ```
 
 ```{r}
