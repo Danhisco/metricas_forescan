@@ -47,7 +47,8 @@ library(cowplot)
 mapa_cir<-read_sf("X:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/00_dados_auxiliares/CIR/CIR_UTM.shp")
 names(mapa_cir) <- tolower(names(mapa_cir))
 mapa_cir <- rename(mapa_cir,cod_space=cod_cir)
-mapa_cir <- st_transform(mapa_cir, crs = 4326)
+brazil <- read_country(year = 2025)
+mapa_cir <- st_transform(mapa_cir, crs = st_crs(brazil))
 # SIRGA2000 ou WGS84
 
 
@@ -598,82 +599,6 @@ lp[[4]] <- dfwis_cir %>%
                                 margin = margin()),
       text = element_text(size=10)
     )
-#
-# keep_mainland <- function(x) {
-#   x %>%
-#     st_cast("POLYGON") %>%
-#     mutate(area = st_area(.)) %>%
-#     group_by(across(-c(area, geometry))) %>%
-#     slice_max(area, n = 1) %>%
-#     ungroup() %>%
-#     st_as_sf() %>%
-#     st_union() %>%
-#     st_sf()
-# }
-# south_america <- ne_countries(scale = "medium", 
-#                               continent = "South America",
-#                               returnclass = "sf") %>% 
-#     keep_mainland()
-# 
-# brazil <- read_country(year = 2020) %>% keep_mainland()
-# sp_state <- read_state(year = 2020,code_state = "SP") %>% keep_mainland()
-# lp[[5]] <- ggplot() +
-#     geom_sf(data = south_america, aes(fill = "South America"),
-#             color = "white", size = 0.2) +
-#     geom_sf(data = brazil, aes(fill = "Brazil"),
-#             color = "white", size = 0.3) +
-#     geom_sf(data = sp_state, aes(fill = "São Paulo State"),
-#             color = "white", size = 0.3) +
-#     scale_fill_manual(
-#         name = NULL,
-#         values = c(
-#             "South America"   = "grey90",
-#             "Brazil"          = "grey60",
-#             "São Paulo State" = "#D73027"
-#             ), breaks = c("South America", "Brazil", "São Paulo State")) +
-#     coord_sf(xlim = c(-85, -30), ylim = c(-54, 11.5), expand = FALSE) +
-#     annotation_north_arrow(
-#         location = "tr",           # top-right
-#         which_north = "true",
-#         style = north_arrow_fancy_orienteering(
-#             fill = c("white", "grey30"),
-#             line_col = "grey30",
-#             text_col = "grey30"
-#             ),
-#         height = unit(1.2, "cm"),
-#         width  = unit(1.2, "cm")
-#         ) +
-#     theme_bw() +
-#     theme(panel.background = element_rect(fill = "white", color = NA),
-#           panel.grid.major = element_blank(),
-#           panel.grid.minor = element_blank(),
-#           legend.position = "right",
-#           legend.margin  = margin(0, 0, 0, 0),
-#           legend.box.margin = margin(0, 0, 0, 0),
-#           legend.spacing = unit(0, "pt"))
-
-
-#
-#
-#
-#@---- estratégia antiga ----#@
-# layout <- "
-# ABBB
-# CDDE
-# "
-# painel_final <- wrap_plots(
-#   lp[c(3,4,1,2,5)], 
-#   design = layout
-#   ) + 
-#   plot_annotation(tag_levels = 'A')
-# vpath <- ggsave(filename = "figuras_e_relatorios/fig1_md_perf.png",
-#                 plot=painel_final,
-#                 dpi=200,
-#                 width=14,
-#                 height=10)
-#
-#
-#
 #@--- estratégia nova ---@#
 names(lp) <- c("C","D","A","B") #,"E"
 f_img <- \(imgpath){
@@ -897,13 +822,13 @@ lp[[1]] <- df_ad %>%
            facet_label = "Real number of CIR"
            ) %>% 
     ggplot(aes(x=data,y=value,color=name)) +
-        geom_point() +
-        geom_line() +
-        scale_color_manual("",
-                           values=c("RR > 1" = "orange",
-                                    "RR ≤ 1" = "darkgreen")
-                           ) +
+    geom_point() +
+    geom_line() +
+    scale_color_manual("",
+                       values=c("RR > 1" = "orange",
+                                "RR ≤ 1" = "darkgreen")) +
     labs(y="",x="") +
+    scale_x_date(expand = FALSE) +
     #ggtitle(label="A)") +
     facet_wrap(~facet_label) +
     theme_bw() +
@@ -911,7 +836,8 @@ lp[[1]] <- df_ad %>%
           legend.margin = margin(t = -5, b = 0, unit = "pt"),
           legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
           legend.box.spacing = unit(0, "pt"),
-          plot.title = element_text(size = 18),
+          plot.title = element_text(size = 12),
+          strip.text = element_text(size=15,margin = margin(),face="bold"),
           strip.background = element_rect(fill="white",colour = "black"))
 #
 nsepi <- length(unique(df_ad$data))
@@ -973,12 +899,15 @@ fplot <- \(vclass){
         # 4. Manutenção do tema limpo para mapas
         theme_bw() +
         theme(
-            legend.position="right",
+            legend.position="bottom",
             panel.grid = element_blank(),
             axis.text = element_blank(),
             axis.ticks = element_blank(),
             strip.background = element_rect(fill=vcolor),
-            strip.text = element_text(face = "bold",size=8,color="white"),
+            strip.text = element_text(face = "bold",
+                                      size=15,
+                                      margin=margin(),
+                                      color="white"),
             text = element_text(size=10)
             )
 }
@@ -986,7 +915,7 @@ lpi <- lapply(levels(dfp$name),fplot)
 # lp[[2]] <- wrap_elements(
 #     wrap_plots(lpi,ncol=1, guides = "collect") &
 #     # plot_annotation(title = "B)") &
-#     theme(legend.position = "right",
+#     theme(legend.position = "bottom"",
 #           plot.margin = margin(t = 2, r = 2, b = 2, l = 2, unit = "pt"),
 #           # altura e largura
 #           legend.key.height = unit(0.2, "cm"), 
@@ -1002,6 +931,7 @@ lpi <- lapply(levels(dfp$name),fplot)
 lp[[2]] <- wrap_elements(
     wrap_plots(lpi,ncol=1, guides = "collect") &
         theme(
+            legend.position = "bottom",
             plot.margin = margin(t = 2, r = 2, b = 2, l = 2, unit = "pt"),
             legend.box.margin = margin(t = -5, b = 0, unit = "pt")
         )
@@ -1009,15 +939,14 @@ lp[[2]] <- wrap_elements(
 
 # o painel com todos os casos para contextualização
 library(scales) # Para formatação do eixo X e Y
+dfcount_gt[dfcount_gt$DT_SIN_PRI==max(dfcount_gt$DT_SIN_PRI),"DT_SIN_PRI"] <- 
+    pull(dfcount_gt[nrow(dfcount_gt)-1,],DT_SIN_PRI) + lubridate::weeks(1)
 lp[[3]] <- dfcount_gt %>% 
+    ungroup() %>% 
     mutate(facetlab = "Total number of cases in the consolidated data") %>% 
     ggplot(aes(x = DT_SIN_PRI, y = n)) +
     geom_col(fill = "#184E77", color = "white", linewidth = 0.2, width = 6) +
-    # scale_x_date(
-    #     date_breaks = "1 month",
-    #     date_labels = "%b/%Y",
-    #     expand = FALSE
-    #     ) +
+    scale_x_date(expand = FALSE) +
     scale_y_continuous(
         labels = label_number(big.mark = ".", decimal.mark = ","),
         expand = expansion(mult = c(0, 0.05))
@@ -1028,11 +957,8 @@ lp[[3]] <- dfcount_gt %>%
     theme(legend.margin = margin(t = -5, b = 0, unit = "pt"),
           legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
           legend.box.spacing = unit(0, "pt"),
-          plot.title = element_text(size = 18),
+          strip.text = element_text(size=18,margin = margin(),face="bold"),
           strip.background = element_rect(fill="white",colour = "black"))
-
-
-
 
 #@--------- as métricas de confusão ------@# 
 #
@@ -1054,8 +980,8 @@ fplot <- \(vgrepl,vrange=c(0,1)){
                            "Moving average of Bayesian predictions",
                            "Naive baseline"),
                          labels = c(
-                           "Std. Bayesian prediction",
-                           "MA Bayesian prediction", 
+                           "Std median",
+                           "MA median", 
                            "Naive baseline"
                            )
                          )
@@ -1078,12 +1004,12 @@ fplot <- \(vgrepl,vrange=c(0,1)){
           legend.margin = margin(t = -5, b = 0, unit = "pt"),
           legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
           plot.title = element_text(size = 18),
-          strip.text=element_text(color = "black",face = "bold",size=8),
+          strip.text=element_text(color = "black",face = "bold",size=12,
+                                  margin=margin()),
           strip.background = element_rect(fill="white",colour = "black"))
 }
 lpi_sepi <- lapply(levels(dfp$name),fplot)
-lpi_sepi[[3]] <- lp[[1]]
-names(lpi_sepi) <- c(levels(dfp$name),"Real")
+names(lpi_sepi) <- levels(dfp$name)
 
 # por cir
 dfp <- dfsumm_cir %>% 
@@ -1092,14 +1018,35 @@ dfp <- dfsumm_cir %>%
    mutate(name=factor(name,
                        levels=c("TruePositiveRate",
                                 "FalsePositiveRate"),
-                       labels = c("True Positive Rate",
-                                  "False Positive Rate"))
+                       labels = c("TPR",
+                                  "FPR"))
            )
 f_ggplot <- \(vgrepl,vrange=c(0,1)){
     dfp0 <- dfp %>% filter(grepl(vgrepl,name))
     vmethods <- levels(dfp$method)
     vfacetlabel <- dfp0$name[1] %>% as.character()
-    vtitle <- ifelse(grepl("True",vgrepl),"D)","F)")
+    # vtitle <- ifelse(grepl("True",vgrepl),"D)","F)")
+    f_mapelements <- \(condicao){
+        if(condicao){
+            list(
+                annotation_scale(location = "bl", width_hint = 0.1,style = "ticks"),
+                annotation_north_arrow(
+                    location = "tr", 
+                    which_north = "true",
+                    pad_x = unit(0.15, "in"), 
+                    pad_y = unit(0.15, "in"),
+                    height = unit(0.6, "cm"),  # Reduz o tamanho da seta
+                    width = unit(0.6, "cm"),
+                    style = north_arrow_orienteering(
+                        fill = c("black", "white"),
+                        line_col = "black",
+                        text_size = 6)
+                    )
+                )
+            } else {
+                NULL
+            }
+        }
     fplot <- \(vmet){
         vcolorstrip <- case_when(
             grepl("Naive",vmet) ~ "black",
@@ -1132,53 +1079,43 @@ f_ggplot <- \(vgrepl,vrange=c(0,1)){
             # 1. Ajuste dos eixos para não ter sobras (margens zeradas)
             coord_sf(expand = FALSE) +
             # 2. Adiciona a Barra de Escala (canto inferior esquerdo)
-            annotation_scale(location = "bl", width_hint = 0.3,style = "ticks") +
-            # 3. Adiciona o Norte (canto superior direito)
-            annotation_north_arrow(
-                location = "tr", 
-                which_north = "true",
-                pad_x = unit(0.15, "in"), 
-                pad_y = unit(0.15, "in"),
-                height = unit(0.8, "cm"),  # Reduz o tamanho da seta
-                width = unit(0.8, "cm"),
-                style = north_arrow_orienteering(
-                    fill = c("black", "white"),
-                    line_col = "black",
-                    text_size = 7)
-                ) +
+            f_mapelements(grepl("FPR",vgrepl) & grepl("Naive",vmet)) +
             # 4. Manutenção do tema limpo para mapas
             theme_bw() +
             theme(
-                legend.position="top",
+                legend.position="bottom",
                 panel.grid = element_blank(),
                 axis.text = element_blank(),
                 axis.ticks = element_blank(),
                 strip.background = element_rect(fill = vcolorstrip),
-                strip.text = element_text(face = "bold",size=8,color="white"),
+                strip.text = element_text(face = "bold",
+                                          size=15,
+                                          margin=margin(),
+                                          color="white"),
                 text = element_text(size=10)
             )
     }
-    lpi <- lapply(grep("Baye",vmethods,value = TRUE),fplot)
+    lpi <- lapply(vmethods,fplot)
     wrap_elements(
-        wrap_plots(lpi,nrow=1, guides = "collect") +
-        plot_annotation(title=vtitle) &
-        theme(legend.position = "bottom",
-              plot.margin = margin(t = 2, r = 2, b = 2, l = 2, unit = "pt"),
+        wrap_plots(lpi,ncol=1, guides = "collect") &
+        #plot_annotation(title=vtitle) &
+        theme(
+        legend.position = "bottom",
+        plot.margin = margin(t = 2, r = 2, b = 2, l = 2, unit = "pt"),
               # altura e largura
-              legend.key.height = unit(0.2, "cm"), 
-              legend.key.width  = unit(0.6, "cm"), 
+              # legend.key.height = unit(0.2, "cm"), 
+              # legend.key.width  = unit(0.6, "cm"), 
               # fonte elementos
-              legend.text = element_text(size = 5),
+              #legend.text = element_text(size = 5),
               #fonte do título
-              legend.title = element_text(size = 6, face = "bold"),
+              #legend.title = element_text(size = 6, face = "bold"),
               #aproxima a legenda
               legend.box.margin = margin(t = -5, b = 0, unit = "pt")
               )
     )
 }  
 lpi_cir <- lapply(levels(dfp$name),f_ggplot)
-lpi_cir[[3]] <- lp[[2]]
-names(lpi_cir) <- c(levels(dfp$name),"Real")
+
 #
 f_ggsave <- \(vpath,pplot,vw,vh){
   ggsave(filename = vpath,
@@ -1187,25 +1124,101 @@ f_ggsave <- \(vpath,pplot,vw,vh){
            width = vw,
            height = vh)
 }
-df_save <- data.frame(label=paste0(LETTERS[1:6],")"),
-                      vnames=rep(names(lpi_cir)[c(3,1:2)],each=2),
-                      vlist=rep(c("_sepi","_cir"),3)) 
-lpath <- lapply(split(df_save,df_save$label),\(dfi){
-  lp <-get(paste0("lpi",dfi$vlist))
-  p <- lp[[dfi$vnames]]
-  vpath <- tempfile(fileext = ".png")
-  f_ggsave(vpath = vpath,
-           pplot=p,
-           vw = 6,
-           vh = 5)
-  return(vpath)
-})
 
+lpgeral <- c(
+    lp,
+    list(
+        lpi_sepi[["True Positive Rate"]],
+        lpi_cir[[1]],
+        lpi_sepi[["False Positive Rate"]],
+        lpi_cir[[2]]
+    )
+)
+
+names(lpgeral) <- LETTERS[1:7]
+df_save <- data.frame(label=paste0(names(lpgeral),")"),
+                      vnames=names(lpgeral),
+                      vw=8) %>% 
+    mutate(vh = case_when(
+        vnames=="A" ~ 7,
+        vnames=="B" ~ 14,
+        vnames=="C" ~ 5,
+        vnames=="D" ~ 7,
+        vnames=="E" ~ 21,
+        vnames=="F" ~ 7,
+        vnames=="G" ~ 21,
+    ))
+lpaths <- lapply(names(lpgeral),\(li){
+    vpath <- tempfile(fileext = ".png")
+    p <- lpgeral[[li]]
+    vw <- filter(df_save,vnames==li) %>% pull(vw)
+    vh <- filter(df_save,vnames==li) %>% pull(vh)
+    ggsave(filename = vpath,
+           plot=p,
+           dpi=200,
+           width=vw,
+           height = vh)
+    # image_read(vpath)
+})
+limg <- lapply(lpaths,\(li){
+    image_read(li) %>% 
+        image_trim()
+})
+names(limg) <- paste0(names(lpgeral),")")
+f_add_label <- \(img, label, 
+                 top_margin = 80, font_size = 60) {
+  img %>%
+    # 1. Adiciona margem branca superior (geometry = "larguraxaltura")
+    image_border(geometry = paste0("0x", top_margin), color = "white") %>%
+    # 2. Desenha o texto no canto superior esquerdo (gravity = "northwest")
+    image_annotate(
+      text = label,
+      gravity = "northwest",
+      location = "+15+10",     # Deslocamento X=15px, Y=10px dentro da margem
+      size = font_size,
+      font = "Arial",          # Ou outra fonte do sistema
+      weight = 700,            # Negrito (bold)
+      color = "black"
+    )
+}
+limg <- lapply(names(limg),\(li){
+    f_add_label(limg[[li]],label=li) %>% 
+        image_trim()
+})
+names(limg) <- paste0(names(lpgeral),")")
+f_append <- \(x,y,vlog=TRUE){
+    image_append(c(x,y),stack = vlog)
+}
+f_make_spacer <- function(img_referencia, width = 50) {
+  h <- image_info(img_referencia)$height
+  image_blank(width = width, height = h, color = "white")
+}
+col_spacer <- f_make_spacer(lcols[[1]], width = 60)
+lcols <- list()
+lcols[[1]] <- Reduce("f_append",limg[1:3])
+lcols[[2]] <- Reduce("f_append",limg[4:5])
+lcols[[3]] <- Reduce("f_append",limg[6:7])
+formals(f_append)$vlog <- FALSE
+lcols_spaced <- list(
+  lcols[[1]], 
+  col_spacer, 
+  lcols[[2]], 
+  col_spacer, 
+  lcols[[3]]
+)
+img_final <- Reduce("f_append",lcols_spaced)
+
+
+#-----------------
 limg <- lapply(lpath,\(li){
     image_read(li) %>%
         image_trim() %>% 
         image_scale(.,"x1416") # mesma altura
 })
+#
+
+
+
 f_append <- \(vi=0,vstack=FALSE){
   vind <- c(1,2) + 2*vi
   image_append(c(limg[[vind[[1]]]], limg[[vind[[2]]]]), stack = vstack)
