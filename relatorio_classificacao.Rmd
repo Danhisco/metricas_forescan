@@ -197,6 +197,30 @@ dfsumm_cir <- df_ad %>%
 dfsumm_cir <- mutate(dfsumm_cir,
                      F1 = ifelse(is.na(F1),0,F1))
 dfsumm_cir <- left_join(mapa_cir,dfsumm_cir,by=c("cod_space"="COD_CIR"))
+
+#@----- dados consolidados -----@#
+oname <- load("X:/CCD/CVE/RESPIRATORIAS/01_SRAG/4_bases/boletim.RData")
+dfgt <- get(oname);rm(list=oname);gc()
+cir<-read_excel("X:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/00_dados_auxiliares/DRS_GVS_CEREST_RRAS_CIR_GVE_MUNICIPIO_MATRIZ.xls")
+cir<- cir |> select(Cod6, RS_CIR, COD_CIR,ID_MUNICIP)|>
+  rename(CO_MUN_RES=Cod6,
+         cod_cir=COD_CIR)
+dfgt <- dfgt %>% select(CO_MUN_RES, DT_SIN_PRI) %>%
+    left_join(cir, by="CO_MUN_RES") %>% 
+    mutate(aepi=lubridate::epiyear(DT_SIN_PRI),
+           sepi=lubridate::epiweek(DT_SIN_PRI))
+vrange <- range(dfsumm2$data)
+dfgt <- filter(dfgt,between(DT_SIN_PRI,vrange[1],vrange[2]))
+dfref <- dfgt %>% 
+    select(DT_SIN_PRI,aepi,sepi) %>% 
+    distinct() %>% 
+    group_by(aepi,sepi) %>% 
+    slice_max(order_by = DT_SIN_PRI, n = 1)
+dfcount_gt <- dfgt %>% 
+    group_by(aepi,sepi) %>% 
+    tally() %>% 
+    inner_join(dfref)
+
 ```
 ```{r auditoria interna, eval=FALSE,include=FALSE, echo=FALSE}
 df_aud %>% 
@@ -575,6 +599,164 @@ lp[[4]] <- dfwis_cir %>%
       text = element_text(size=10)
     )
 #
+# keep_mainland <- function(x) {
+#   x %>%
+#     st_cast("POLYGON") %>%
+#     mutate(area = st_area(.)) %>%
+#     group_by(across(-c(area, geometry))) %>%
+#     slice_max(area, n = 1) %>%
+#     ungroup() %>%
+#     st_as_sf() %>%
+#     st_union() %>%
+#     st_sf()
+# }
+# south_america <- ne_countries(scale = "medium", 
+#                               continent = "South America",
+#                               returnclass = "sf") %>% 
+#     keep_mainland()
+# 
+# brazil <- read_country(year = 2020) %>% keep_mainland()
+# sp_state <- read_state(year = 2020,code_state = "SP") %>% keep_mainland()
+# lp[[5]] <- ggplot() +
+#     geom_sf(data = south_america, aes(fill = "South America"),
+#             color = "white", size = 0.2) +
+#     geom_sf(data = brazil, aes(fill = "Brazil"),
+#             color = "white", size = 0.3) +
+#     geom_sf(data = sp_state, aes(fill = "São Paulo State"),
+#             color = "white", size = 0.3) +
+#     scale_fill_manual(
+#         name = NULL,
+#         values = c(
+#             "South America"   = "grey90",
+#             "Brazil"          = "grey60",
+#             "São Paulo State" = "#D73027"
+#             ), breaks = c("South America", "Brazil", "São Paulo State")) +
+#     coord_sf(xlim = c(-85, -30), ylim = c(-54, 11.5), expand = FALSE) +
+#     annotation_north_arrow(
+#         location = "tr",           # top-right
+#         which_north = "true",
+#         style = north_arrow_fancy_orienteering(
+#             fill = c("white", "grey30"),
+#             line_col = "grey30",
+#             text_col = "grey30"
+#             ),
+#         height = unit(1.2, "cm"),
+#         width  = unit(1.2, "cm")
+#         ) +
+#     theme_bw() +
+#     theme(panel.background = element_rect(fill = "white", color = NA),
+#           panel.grid.major = element_blank(),
+#           panel.grid.minor = element_blank(),
+#           legend.position = "right",
+#           legend.margin  = margin(0, 0, 0, 0),
+#           legend.box.margin = margin(0, 0, 0, 0),
+#           legend.spacing = unit(0, "pt"))
+
+
+#
+#
+#
+#@---- estratégia antiga ----#@
+# layout <- "
+# ABBB
+# CDDE
+# "
+# painel_final <- wrap_plots(
+#   lp[c(3,4,1,2,5)], 
+#   design = layout
+#   ) + 
+#   plot_annotation(tag_levels = 'A')
+# vpath <- ggsave(filename = "figuras_e_relatorios/fig1_md_perf.png",
+#                 plot=painel_final,
+#                 dpi=200,
+#                 width=14,
+#                 height=10)
+#
+#
+#
+#@--- estratégia nova ---@#
+names(lp) <- c("C","D","A","B") #,"E"
+f_img <- \(imgpath){
+    vimg <- image_read(imgpath) %>%
+        image_trim()
+    image_write(vimg,imgpath)
+}
+f_ggsave <- \(vname){
+    if(vname %in% c("C","A","E")){
+        vw <- 7
+        vh <- 6.5
+    }else if(vname=="B"){
+        vw <- 21
+        vh <- 6.5
+    }else{
+        vw <- 14
+        vh <- 6.5
+    }
+    p <- lp[[vname]] + ggtitle(paste0(vname,")"))
+    vpath <- tempfile(fileext = ".png")
+    ggsave(filename = vpath,
+           plot=p,
+           width = vw,
+           height = vh,
+           dpi=200)
+    f_img(vpath)
+    # image_read(vpath)
+    return(vpath)
+}
+lpath <- lapply(names(lp),f_ggsave)
+limg <- lapply(lpath,image_read)
+names(limg) <- names(lp)
+limg <- limg[LETTERS[1:4]]
+
+# --- Parâmetros globais ---
+W <- 3000          # largura total comum às duas linhas (pixels)
+H <- 800           # altura comum às duas linhas (pixels)
+bg <- "white"      # cor do padding
+# --- Função: redimensiona para largura fixa, mantém aspect, faz padding até altura fixa ---
+fit_cell <- function(img, vw, vh, bg = "white") {
+  # Redimensiona mantendo aspect ratio, encaixando na célula width x height
+  image_resize(img, geometry = paste0(vw, "x", vh))
+  # Expande o canvas até width x height, centralizado, com padding
+}
+w_A <- round(W * 1/4)
+w_B <- round(W * 3/4)
+
+row1 <- image_append(c(
+  fit_cell(limg$A, w_A, H, bg),
+  fit_cell(limg$B, w_B, H, bg)
+), stack = FALSE)
+
+# --- Linha 2: C (1/4) + D (2/4) + E (1/4) ---
+w_C <- round(W * 1/4)
+w_D <- round(W * 2/4)
+#w_E <- round(W * 1/4)
+
+row2 <- image_append(c(
+  fit_cell(limg$C, w_C, H, bg),
+  fit_cell(limg$D, w_D, H, bg) #,
+  # image_extent(img, geometry = paste0(vw, "x", vh),
+  #               gravity = "center", color = bg)
+  #image_resize(limg$E,"x673")
+), stack = FALSE)
+
+fig_final <- image_append(c(row1, row2), stack = TRUE) %>% 
+    image_trim()
+image_write(image = fig_final,path = "figuras_e_relatorios/fig1_md_perf.png")
+```
+
+
+Alternativamente, não haverá a figura 2 atual de validação dos modelos 
+
+```{r}
+# setup inicial da imagem criado no power point:
+f_img <- \(imgpath){
+    vimg <- image_read(imgpath) %>%
+        image_trim()
+    image_write(vimg,imgpath)
+}
+f_img("figuras_e_relatorios/esquema_trabalho2.png")
+
+# figura de localização
 keep_mainland <- function(x) {
   x %>%
     st_cast("POLYGON") %>%
@@ -590,10 +772,9 @@ south_america <- ne_countries(scale = "medium",
                               continent = "South America",
                               returnclass = "sf") %>% 
     keep_mainland()
-
-brazil <- read_country(year = 2020) %>% keep_mainland()
-sp_state <- read_state(year = 2020,code_state = "SP") %>% keep_mainland()
-lp[[5]] <- ggplot() +
+brazil <- read_country(year = 2025) %>% keep_mainland()
+sp_state <- read_state(year = 2025,code_state = "SP") %>% keep_mainland()
+p <- ggplot() +
     geom_sf(data = south_america, aes(fill = "South America"),
             color = "white", size = 0.2) +
     geom_sf(data = brazil, aes(fill = "Brazil"),
@@ -625,99 +806,74 @@ lp[[5]] <- ggplot() +
           panel.grid.minor = element_blank(),
           legend.position = "right",
           legend.margin  = margin(0, 0, 0, 0),
-          legend.box.margin = margin(0, 0, 0, 0),
+          legend.box.margin = margin(l = -10, unit = "pt"),
           legend.spacing = unit(0, "pt"))
-
-
+vw <- 7
+vh <- 6.5
+vpath <- "figuras_e_relatorios/context_map.png"
+ggsave(filename = vpath,
+       plot=p,
+       width = vw,
+       height = vh,
+       dpi=200)
+f_img(vpath)
 #
-#
-#
-#@---- estratégia antiga ----#@
-# layout <- "
-# ABBB
-# CDDE
-# "
-# painel_final <- wrap_plots(
-#   lp[c(3,4,1,2,5)], 
-#   design = layout
-#   ) + 
-#   plot_annotation(tag_levels = 'A')
-# vpath <- ggsave(filename = "figuras_e_relatorios/fig1_md_perf.png",
-#                 plot=painel_final,
-#                 dpi=200,
-#                 width=14,
-#                 height=10)
-#
-#
-#
-#@--- estratégia nova ---@#
-names(lp) <- c("C","D","A","B","E")
-f_img <- \(imgpath){
-    vimg <- image_read(imgpath) %>%
-        image_trim()
-    image_write(vimg,imgpath)
+#@--- juntando as fitas ---@#
+# leitura
+limg <- list("mapa"=vpath,
+             "esquema"="figuras_e_relatorios/esquema_trabalho2.png") %>% 
+    lapply(.,image_read)
+# padronização das alturas
+vheight <- image_info(limg[["esquema"]])$height
+limg[["mapa"]] <- image_resize(limg[["mapa"]],
+                               paste0("x", vheight )
+                               )
+# adição de rótulos
+add_top_label <- \(img, 
+                   label, 
+                   top_margin = 30, 
+                   font_size = 18, 
+                   text_color = "black") {
+  # 1. Adiciona o espaço em branco no topo (largura x altura)
+  img_with_space <- image_border(
+    img, 
+    color = "white", 
+    geometry = sprintf("0x%d", top_margin)
+  )
+  
+  # 2. Escreve o rótulo no canto superior esquerdo da nova margem
+  img_labeled <- image_annotate(
+    img_with_space, 
+    text = label, 
+    size = font_size, 
+    color = text_color, 
+    font = "sans",
+    gravity = "northwest", 
+    location = "+10+5" # Recuo leve do topo e da esquerda
+  )
+  return(img_labeled)
 }
-f_ggsave <- \(vname){
-    if(vname %in% c("C","A","E")){
-        vw <- 7
-        vh <- 6.5
-    }else if(vname=="B"){
-        vw <- 21
-        vh <- 6.5
-    }else{
-        vw <- 14
-        vh <- 6.5
-    }
-    p <- lp[[vname]] + ggtitle(paste0(vname,")"))
-    vpath <- tempfile(fileext = ".png")
-    ggsave(filename = vpath,
-           plot=p,
-           width = vw,
-           height = vh,
-           dpi=200)
-    f_img(vpath)
-    # image_read(vpath)
-    return(vpath)
-}
-lpath <- lapply(names(lp),f_ggsave)
-limg <- lapply(lpath,image_read)
-names(limg) <- names(lp)
-limg <- limg[LETTERS[1:5]]
 
-# --- Parâmetros globais ---
-W <- 3000          # largura total comum às duas linhas (pixels)
-H <- 800           # altura comum às duas linhas (pixels)
-bg <- "white"      # cor do padding
-# --- Função: redimensiona para largura fixa, mantém aspect, faz padding até altura fixa ---
-fit_cell <- function(img, vw, vh, bg = "white") {
-  # Redimensiona mantendo aspect ratio, encaixando na célula width x height
-  image_resize(img, geometry = paste0(vw, "x", vh))
-  # Expande o canvas até width x height, centralizado, com padding
-}
-w_A <- round(W * 1/4)
-w_B <- round(W * 3/4)
-
-row1 <- image_append(c(
-  fit_cell(limg$A, w_A, H, bg),
-  fit_cell(limg$B, w_B, H, bg)
-), stack = FALSE)
-
-# --- Linha 2: C (1/4) + D (2/4) + E (1/4) ---
-w_C <- round(W * 1/4)
-w_D <- round(W * 2/4)
-w_E <- round(W * 1/4)
-
-row2 <- image_append(c(
-  fit_cell(limg$C, w_C, H, bg),
-  fit_cell(limg$D, w_D, H, bg),
-  # image_extent(img, geometry = paste0(vw, "x", vh),
-  #               gravity = "center", color = bg)
-  image_resize(limg$E,"x673")
-), stack = FALSE)
-
-fig_final <- image_append(c(row1, row2), stack = TRUE) %>% 
+vlabs <- c("A)","B)")
+names(vlabs) <- names(limg)
+limg <- lapply(names(vlabs),\(li){
+    vimg <- limg[[li]]
+    vlab <- vlabs[[li]]
+    add_top_label(vimg,vlab)
+    })
+names(limg) <- names(vlabs)
+#
+limg[["esquema"]] <- image_border(
+  limg[["esquema"]], 
+  color = "white", 
+  geometry = "20x0" # 20px de espaço entre A e B
+)
+img_final <- image_append(
+    do.call("c",limg),stack = FALSE
+    ) %>% 
     image_trim()
-image_write(image = fig_final,path = "figuras_e_relatorios/fig1_md_perf.png")
+image_write(img_final,
+            path="figuras_e_relatorios/esquema_trabalho3.png")
 ```
 
 
@@ -748,7 +904,7 @@ lp[[1]] <- df_ad %>%
                                     "RR ≤ 1" = "darkgreen")
                            ) +
     labs(y="",x="") +
-    ggtitle(label="A)") +
+    #ggtitle(label="A)") +
     facet_wrap(~facet_label) +
     theme_bw() +
     theme(legend.position="bottom",
@@ -771,6 +927,32 @@ dfp <- df_ad %>%
                              "RR ≤ 1")
                          )
            )
+f_mapelements <- \(condicao){
+  if (condicao) {
+    # Agrupa as camadas em uma lista para que o '+' do ggplot2 saiba adicioná-las
+    list(
+      # 2. Adiciona a Barra de Escala (canto inferior esquerdo)
+      annotation_scale(location = "bl", width_hint = 0.3, style = "ticks"),
+      
+      # 3. Adiciona o Norte (canto superior direito)
+      annotation_north_arrow(
+        location = "tr", 
+        which_north = "true",
+        pad_x = unit(0.15, "in"), 
+        pad_y = unit(0.15, "in"),
+        height = unit(0.8, "cm"), 
+        width = unit(0.8, "cm"),
+        style = north_arrow_orienteering(
+          fill = c("black", "white"),
+          line_col = "black",
+          text_size = 7
+        )
+      )
+    )
+  } else {
+    NULL
+  }
+}
 fplot <- \(vclass){
     vcolor <- case_when(
         grepl(">",vclass)~"orange",
@@ -784,29 +966,14 @@ fplot <- \(vclass){
                              high = "red", 
                              mid = "yellow", 
                              midpoint = 50,
-                             name = "% of weeks",
+                             name = "% of\nweeks",
                              limits=c(0,100)) +
         facet_wrap(~name,nrow=1) +
         coord_sf(expand = FALSE) +
-        # 2. Adiciona a Barra de Escala (canto inferior esquerdo)
-        annotation_scale(location = "bl", width_hint = 0.3,style = "ticks") +
-        # 3. Adiciona o Norte (canto superior direito)
-        annotation_north_arrow(
-                    location = "tr", 
-                    which_north = "true",
-                    pad_x = unit(0.15, "in"), 
-                    pad_y = unit(0.15, "in"),
-                    height = unit(0.8, "cm"),  # Reduz o tamanho da seta
-                    width = unit(0.8, "cm"),
-                    style = north_arrow_orienteering(
-                        fill = c("black", "white"),
-                        line_col = "black",
-                        text_size = 7)
-                    ) +
         # 4. Manutenção do tema limpo para mapas
         theme_bw() +
         theme(
-            legend.position="bottom",
+            legend.position="right",
             panel.grid = element_blank(),
             axis.text = element_blank(),
             axis.ticks = element_blank(),
@@ -816,22 +983,58 @@ fplot <- \(vclass){
             )
 }
 lpi <- lapply(levels(dfp$name),fplot)
+# lp[[2]] <- wrap_elements(
+#     wrap_plots(lpi,ncol=1, guides = "collect") &
+#     # plot_annotation(title = "B)") &
+#     theme(legend.position = "right",
+#           plot.margin = margin(t = 2, r = 2, b = 2, l = 2, unit = "pt"),
+#           # altura e largura
+#           legend.key.height = unit(0.2, "cm"), 
+#           legend.key.width  = unit(0.6, "cm"), 
+#               # fonte elementos
+#               legend.text = element_text(size = 5),
+#               #fonte do título
+#               legend.title = element_text(size = 6, face = "bold"),
+#               #aproxima a legenda
+#               legend.box.margin = margin(t = -5, b = 0, unit = "pt")
+#     )
+# )
 lp[[2]] <- wrap_elements(
-    wrap_plots(lpi,ncol=2, guides = "collect") +
-    plot_annotation(title = "B)") &
-    theme(legend.position = "bottom",
-          plot.margin = margin(t = 2, r = 2, b = 2, l = 2, unit = "pt"),
-          # altura e largura
-          legend.key.height = unit(0.2, "cm"), 
-          legend.key.width  = unit(0.6, "cm"), 
-              # fonte elementos
-              legend.text = element_text(size = 5),
-              #fonte do título
-              legend.title = element_text(size = 6, face = "bold"),
-              #aproxima a legenda
-              legend.box.margin = margin(t = -5, b = 0, unit = "pt")
+    wrap_plots(lpi,ncol=1, guides = "collect") &
+        theme(
+            plot.margin = margin(t = 2, r = 2, b = 2, l = 2, unit = "pt"),
+            legend.box.margin = margin(t = -5, b = 0, unit = "pt")
+        )
     )
-)
+
+# o painel com todos os casos para contextualização
+library(scales) # Para formatação do eixo X e Y
+lp[[3]] <- dfcount_gt %>% 
+    mutate(facetlab = "Total number of cases in the consolidated data") %>% 
+    ggplot(aes(x = DT_SIN_PRI, y = n)) +
+    geom_col(fill = "#184E77", color = "white", linewidth = 0.2, width = 6) +
+    # scale_x_date(
+    #     date_breaks = "1 month",
+    #     date_labels = "%b/%Y",
+    #     expand = FALSE
+    #     ) +
+    scale_y_continuous(
+        labels = label_number(big.mark = ".", decimal.mark = ","),
+        expand = expansion(mult = c(0, 0.05))
+        ) +
+    labs(x="",y="") +
+    facet_wrap(~facetlab) +
+    theme_bw() +
+    theme(legend.margin = margin(t = -5, b = 0, unit = "pt"),
+          legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
+          legend.box.spacing = unit(0, "pt"),
+          plot.title = element_text(size = 18),
+          strip.background = element_rect(fill="white",colour = "black"))
+
+
+
+
+#@--------- as métricas de confusão ------@# 
 #
 dfp <- dfsumm2 %>% 
   select(data:method,contains("Rate")) %>% 
@@ -857,18 +1060,18 @@ fplot <- \(vgrepl,vrange=c(0,1)){
                            )
                          )
                    )
-  vtitle <- ifelse(grepl("True",vgrepl),"C)","E)")
+  # vtitle <- ifelse(grepl("True",vgrepl),"C)","E)")
   dfp0 %>% 
   ggplot(aes(x=data,y=value,color=method)) +
     scale_color_manual("",values=c(
-        "Std. Bayesian prediction"="red",
-        "MA Bayesian prediction"="blue",
+        "Std median"="red",
+        "MA median"="blue",
         "Naive baseline"="black")) +
     geom_line(alpha=0.5,linewidth = 1.5) +
     geom_point(alpha=0.5,size = 1.5) +
     theme_bw() +
     labs(y="",x="") +
-    ggtitle(label=vtitle) +
+    # ggtitle(label=vtitle) +
     facet_wrap(~name,ncol=2) +
     scale_y_continuous(expand=c(0,0.01),limits = vrange) +
     theme(legend.position="bottom",
@@ -1011,7 +1214,7 @@ limg_final <- lapply(0:2,f_append)
 f_append <- \(x,y){
   image_append(c(x, y), stack = TRUE)
 }
-img_final <- Reduce("f_append",limg_final)
+ <- Reduce("f_append",limg_final)
 image_write(img_final,"figuras_e_relatorios/figura_ABC_completa.png")
 # 
 library(magick)
@@ -1509,16 +1712,6 @@ save_as_docx(
   pr_section = sect_properties
 )
 
-
-```
-
-```{r}
-f_img <- \(imgpath){
-    vimg <- image_read(imgpath) %>%
-        image_trim()
-    image_write(vimg,imgpath)
-}
-f_img("figuras_e_relatorios/esquema_trabalho.png")
 
 ```
 
