@@ -47,7 +47,7 @@ library(cowplot)
 mapa_cir<-read_sf("X:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/00_dados_auxiliares/CIR/CIR_UTM.shp")
 names(mapa_cir) <- tolower(names(mapa_cir))
 mapa_cir <- rename(mapa_cir,cod_space=cod_cir)
-brazil <- read_country(year = 2025)
+brazil <- geobr::read_country(year = 2025)
 mapa_cir <- st_transform(mapa_cir, crs = st_crs(brazil))
 # SIRGA2000 ou WGS84
 
@@ -808,6 +808,12 @@ image_write(img_final,
 ## Figure 2 from main text: SaTScan-based risk classification of CIRs
 
 ```{r fig2, include=FALSE,eval=TRUE ,fig.width=10,fig.height=14}
+# parametros gráficos comuns
+vfacet_title_size <- 18
+vline_size <- 2
+vpoint_size <- 3
+vtext_size <- 18
+#
 lp <- list()
 lp[[1]] <- df_ad %>% 
     group_by(data) %>% 
@@ -822,22 +828,22 @@ lp[[1]] <- df_ad %>%
            facet_label = "Real number of CIR"
            ) %>% 
     ggplot(aes(x=data,y=value,color=name)) +
-    geom_point() +
-    geom_line() +
+    geom_point(size=vpoint_size) +
+    geom_line(linewidth=vline_size) +
     scale_color_manual("",
                        values=c("RR > 1" = "orange",
                                 "RR ≤ 1" = "darkgreen")) +
     labs(y="",x="") +
-    scale_x_date(expand = FALSE) +
-    #ggtitle(label="A)") +
     facet_wrap(~facet_label) +
     theme_bw() +
     theme(legend.position="bottom",
           legend.margin = margin(t = -5, b = 0, unit = "pt"),
           legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
           legend.box.spacing = unit(0, "pt"),
-          plot.title = element_text(size = 12),
-          strip.text = element_text(size=15,margin = margin(),face="bold"),
+          strip.text = element_text(size=vfacet_title_size,
+                                    margin = margin(),
+                                    face="bold"),
+          text = element_text(size=vtext_size),
           strip.background = element_rect(fill="white",colour = "black"))
 #
 nsepi <- length(unique(df_ad$data))
@@ -905,10 +911,10 @@ fplot <- \(vclass){
             axis.ticks = element_blank(),
             strip.background = element_rect(fill=vcolor),
             strip.text = element_text(face = "bold",
-                                      size=15,
+                                      size=vfacet_title_size,
                                       margin=margin(),
                                       color="white"),
-            text = element_text(size=10)
+            text = element_text(size=vtext_size)
             )
 }
 lpi <- lapply(levels(dfp$name),fplot)
@@ -957,56 +963,60 @@ lp[[3]] <- dfcount_gt %>%
     theme(legend.margin = margin(t = -5, b = 0, unit = "pt"),
           legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
           legend.box.spacing = unit(0, "pt"),
-          strip.text = element_text(size=18,margin = margin(),face="bold"),
-          strip.background = element_rect(fill="white",colour = "black"))
+          strip.text = element_text(size=vfacet_title_size,
+                                    margin = margin(),face="bold"),
+          strip.background = element_rect(fill="white",colour = "black"),
+          text = element_text(size=vtext_size)
+          )
 
 #@--------- as métricas de confusão ------@# 
 #
 dfp <- dfsumm2 %>% 
-  select(data:method,contains("Rate")) %>% 
-  pivot_longer(cols=contains("Rate")) %>% 
+    select(data:method,contains("Rate")) %>% 
+    pivot_longer(cols=contains("Rate")) %>% 
     mutate(name=factor(name,
                        levels=c("TruePositiveRate",
                                 "FalsePositiveRate"
                                 ),
-                       labels = c("True Positive Rate",
-                                  "False Positive Rate"))
+                       labels = c("True Positive Rate (TPR)",
+                                  "False Positive Rate (FPR)")),
+           value=value*100
            )
-fplot <- \(vgrepl,vrange=c(0,1)){
-  dfp0 <- dfp %>% filter(grepl(vgrepl,name)) %>% 
-    mutate(method=factor(method,
-                         levels=c(
-                           "Standard Bayesian prediction",
-                           "Moving average of Bayesian predictions",
-                           "Naive baseline"),
-                         labels = c(
-                           "Std median",
-                           "MA median", 
-                           "Naive baseline"
-                           )
-                         )
-                   )
-  # vtitle <- ifelse(grepl("True",vgrepl),"C)","E)")
-  dfp0 %>% 
-  ggplot(aes(x=data,y=value,color=method)) +
-    scale_color_manual("",values=c(
-        "Std median"="red",
-        "MA median"="blue",
-        "Naive baseline"="black")) +
-    geom_line(alpha=0.5,linewidth = 1.5) +
-    geom_point(alpha=0.5,size = 1.5) +
-    theme_bw() +
-    labs(y="",x="") +
-    # ggtitle(label=vtitle) +
-    facet_wrap(~name,ncol=2) +
-    scale_y_continuous(expand=c(0,0.01),limits = vrange) +
-    theme(legend.position="bottom",
-          legend.margin = margin(t = -5, b = 0, unit = "pt"),
-          legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
-          plot.title = element_text(size = 18),
-          strip.text=element_text(color = "black",face = "bold",size=12,
-                                  margin=margin()),
-          strip.background = element_rect(fill="white",colour = "black"))
+fplot <- \(vgrepl,vrange=c(0,100)){
+    dfp0 <- dfp %>% filter(name==vgrepl) %>% 
+        mutate(method=factor(method,
+                             levels=c(
+                                 "Standard Bayesian prediction",
+                                 "Moving average of Bayesian predictions",
+                                 "Naive baseline"),
+                             labels = c(
+                                 "Std Median",
+                                 "MA Median", 
+                                 "Naive baseline"
+                             )
+        )
+        )
+    dfp0 %>% 
+        ggplot(aes(x=data,y=value,color=method)) +
+        scale_color_manual("",values=c(
+            "Std Median"="red",
+            "MA Median"="blue",
+            "Naive baseline"="black")) +
+        geom_line(alpha=0.5,linewidth = vline_size) +
+        geom_point(alpha=0.5,size = vpoint_size) +
+        theme_bw() +
+        labs(y="",x="") +
+        facet_wrap(~name,ncol=2) +
+        scale_y_continuous(expand=c(0,0.01),limits = vrange) +
+        theme(legend.position="bottom",
+              legend.margin = margin(t = -5, b = 0, unit = "pt"),
+              legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
+              legend.box.spacing = unit(0, "pt"),
+              strip.text=element_text(color = "black",face = "bold",
+                                      size=vfacet_title_size,
+                                      margin=margin()),
+              text = element_text(size=vtext_size),
+              strip.background = element_rect(fill="white",colour = "black"))
 }
 lpi_sepi <- lapply(levels(dfp$name),fplot)
 names(lpi_sepi) <- levels(dfp$name)
@@ -1019,24 +1029,25 @@ dfp <- dfsumm_cir %>%
                        levels=c("TruePositiveRate",
                                 "FalsePositiveRate"),
                        labels = c("TPR",
-                                  "FPR"))
-           )
-f_ggplot <- \(vgrepl,vrange=c(0,1)){
-    dfp0 <- dfp %>% filter(grepl(vgrepl,name))
+                                  "FPR")),
+          value=value*100
+          )
+f_ggplot <- \(vgrepl,vrange=c(0,100)){
+    dfp0 <- dfp %>% filter(name==vgrepl)
     vmethods <- levels(dfp$method)
     vfacetlabel <- dfp0$name[1] %>% as.character()
     # vtitle <- ifelse(grepl("True",vgrepl),"D)","F)")
     f_mapelements <- \(condicao){
         if(condicao){
             list(
-                annotation_scale(location = "bl", width_hint = 0.1,style = "ticks"),
+                annotation_scale(location = "bl", width_hint = 0.2,style = "ticks"),
                 annotation_north_arrow(
                     location = "tr", 
                     which_north = "true",
                     pad_x = unit(0.15, "in"), 
                     pad_y = unit(0.15, "in"),
-                    height = unit(0.6, "cm"),  # Reduz o tamanho da seta
-                    width = unit(0.6, "cm"),
+                    height = unit(0.8, "cm"),  # Reduz o tamanho da seta
+                    width = unit(0.8, "cm"),
                     style = north_arrow_orienteering(
                         fill = c("black", "white"),
                         line_col = "black",
@@ -1060,8 +1071,8 @@ f_ggplot <- \(vgrepl,vrange=c(0,1)){
                                      "Moving average of Bayesian predictions",
                                      "Naive baseline"),
                                  labels = c(
-                                   "Standard Bayes",
-                                   "MA Bayes", 
+                                   "Std Median",
+                                   "MA Median", 
                                    "Naive baseline"
                                    )
                                  )
@@ -1072,7 +1083,7 @@ f_ggplot <- \(vgrepl,vrange=c(0,1)){
             scale_fill_gradient2(low = "purple", 
                                  mid = "white", 
                                  high = "yellow", 
-                                 midpoint = 0.50,
+                                 midpoint = 50,
                                  name = vfacetlabel,
                                  limits=vrange) +
             facet_wrap(~method,ncol=1) +
@@ -1088,11 +1099,14 @@ f_ggplot <- \(vgrepl,vrange=c(0,1)){
                 axis.text = element_blank(),
                 axis.ticks = element_blank(),
                 strip.background = element_rect(fill = vcolorstrip),
+                legend.margin = margin(t = -5, b = 0, unit = "pt"),
+                legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
+                legend.box.spacing = unit(0, "pt"),
                 strip.text = element_text(face = "bold",
-                                          size=15,
+                                          size=vfacet_title_size,
                                           margin=margin(),
                                           color="white"),
-                text = element_text(size=10)
+                text = element_text(size=vtext_size)
             )
     }
     lpi <- lapply(vmethods,fplot)
@@ -1115,7 +1129,6 @@ f_ggplot <- \(vgrepl,vrange=c(0,1)){
     )
 }  
 lpi_cir <- lapply(levels(dfp$name),f_ggplot)
-
 #
 f_ggsave <- \(vpath,pplot,vw,vh){
   ggsave(filename = vpath,
@@ -1124,17 +1137,15 @@ f_ggsave <- \(vpath,pplot,vw,vh){
            width = vw,
            height = vh)
 }
-
 lpgeral <- c(
     lp,
     list(
-        lpi_sepi[["True Positive Rate"]],
+        lpi_sepi[["True Positive Rate (TPR)"]],
         lpi_cir[[1]],
-        lpi_sepi[["False Positive Rate"]],
+        lpi_sepi[["False Positive Rate (FPR)"]],
         lpi_cir[[2]]
     )
 )
-
 names(lpgeral) <- LETTERS[1:7]
 df_save <- data.frame(label=paste0(names(lpgeral),")"),
                       vnames=names(lpgeral),
@@ -1189,15 +1200,19 @@ names(limg) <- paste0(names(lpgeral),")")
 f_append <- \(x,y,vlog=TRUE){
     image_append(c(x,y),stack = vlog)
 }
-f_make_spacer <- function(img_referencia, width = 50) {
+f_make_spacer <- \(img_referencia, width = 50){
   h <- image_info(img_referencia)$height
   image_blank(width = width, height = h, color = "white")
 }
-col_spacer <- f_make_spacer(lcols[[1]], width = 60)
+# para centralizar mais a figura C)
+limg[["C)"]] <- image_border(limg[["C)"]],
+                             geometry = paste0("0x", 85), 
+                             color = "white")
 lcols <- list()
 lcols[[1]] <- Reduce("f_append",limg[1:3])
 lcols[[2]] <- Reduce("f_append",limg[4:5])
 lcols[[3]] <- Reduce("f_append",limg[6:7])
+col_spacer <- f_make_spacer(lcols[[1]], width = 60)
 formals(f_append)$vlog <- FALSE
 lcols_spaced <- list(
   lcols[[1]], 
@@ -1206,38 +1221,39 @@ lcols_spaced <- list(
   col_spacer, 
   lcols[[3]]
 )
-img_final <- Reduce("f_append",lcols_spaced)
-
+img_final <- Reduce("f_append",lcols_spaced) %>% 
+    image_trim
+image_write(img_final,path="figuras_e_relatorios/ABC_draft.png")
 
 #-----------------
-limg <- lapply(lpath,\(li){
-    image_read(li) %>%
-        image_trim() %>% 
-        image_scale(.,"x1416") # mesma altura
-})
-#
-
-
-
-f_append <- \(vi=0,vstack=FALSE){
-  vind <- c(1,2) + 2*vi
-  image_append(c(limg[[vind[[1]]]], limg[[vind[[2]]]]), stack = vstack)
-}
-limg_final <- lapply(0:2,f_append)
-f_append <- \(x,y){
-  image_append(c(x, y), stack = TRUE)
-}
- <- Reduce("f_append",limg_final)
-image_write(img_final,"figuras_e_relatorios/figura_ABC_completa.png")
+# limg <- lapply(lpath,\(li){
+#     image_read(li) %>%
+#         image_trim() %>% 
+#         image_scale(.,"x1416") # mesma altura
+# })
+# #
 # 
-library(magick)
-f_img <- \(imgpath){
-    vimg <- image_read(imgpath) %>%
-        image_trim()
-    image_write(vimg,imgpath)
-    gc()
-}
-f_img("figuras_e_relatorios/figura_ABC_completa.png")
+# 
+# 
+# f_append <- \(vi=0,vstack=FALSE){
+#   vind <- c(1,2) + 2*vi
+#   image_append(c(limg[[vind[[1]]]], limg[[vind[[2]]]]), stack = vstack)
+# }
+# limg_final <- lapply(0:2,f_append)
+# f_append <- \(x,y){
+#   image_append(c(x, y), stack = TRUE)
+# }
+#  <- Reduce("f_append",limg_final)
+# image_write(img_final,"figuras_e_relatorios/figura_ABC_completa.png")
+# # 
+# library(magick)
+# f_img <- \(imgpath){
+#     vimg <- image_read(imgpath) %>%
+#         image_trim()
+#     image_write(vimg,imgpath)
+#     gc()
+# }
+# f_img("figuras_e_relatorios/figura_ABC_completa.png")
 ```
 
 
