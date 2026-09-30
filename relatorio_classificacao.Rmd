@@ -49,12 +49,12 @@ names(mapa_cir) <- tolower(names(mapa_cir))
 mapa_cir <- rename(mapa_cir,cod_space=cod_cir)
 brazil <- geobr::read_country(year = 2025)
 mapa_cir <- st_transform(mapa_cir, crs = st_crs(brazil))
-# SIRGA2000 ou WGS84
-
-
 # WIS e cobertura
 dfwis_cir <- read_csv("X:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/08_manuscritos/Artigo_ForScan/2_output/material_paper/indicador_por_municipio.csv") %>% 
     select(-1)
+if(FALSE){
+    file.info("X:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/08_manuscritos/Artigo_ForScan/2_output/material_paper/indicador_base.csv")
+}
 dfwis_sepi <- read_csv("X:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/08_manuscritos/Artigo_ForScan/2_output/material_paper/indicador_base.csv") %>% 
   select(-1)
 
@@ -69,7 +69,7 @@ dfwis_sepi <- read_csv("X:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/08_ma
 # 
 # ########
 
-ldf_fig2 <- readRDS("X:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/dados/ldf_fig2.rds")
+ldf_fig2 <- readRDS("X:/CCD/CVE/RESPIRATORIAS/_EQUIPE/DaniloPereiraMori/artigos/artigo_tati_NFcastingSatScan/dados/ldf_fig2.rds") # criado em X:/CCD/CVE/RESPIRATORIAS/05_SRAG_SISTEMA_DE_ALERTA/08_manuscritos/Artigo_ForScan/1_script/04_grafico_indicadores.R - contem as modificações necessários (feito no script 02_)
 
 # classificação do satscan
 df_ad0 <- read_csv2("dados/tab_tudo_RR.csv")
@@ -222,24 +222,6 @@ dfcount_gt <- dfgt %>%
     tally() %>% 
     inner_join(dfref)
 
-```
-```{r auditoria interna, eval=FALSE,include=FALSE, echo=FALSE}
-df_aud %>% 
-  filter(PPV==1,grepl("Naive",method)) %>% 
-  select(method:Sensitivity,PPV,Real.Pos,Real.Neg)
-dfsumm %>%
-    group_by(data,method) %>% 
-    mutate(total = sum(FN,TN,TP,FP)) %>% 
-    summary()
-dfsumm_cir %>% 
-    sf::st_drop_geometry() %>% 
-    group_by(rs_cir,method) %>% 
-    mutate(total = sum(FN,TN,TP,FP)) %>% 
-    select(rs_cir:FP,total) %>% 
-    filter(grepl("POLO",rs_cir)) %>% 
-    mutate(TPR = TP / (TP + FN),
-           FPR = FP / (FP + TN)
-           )
 ```
 
 # Context
@@ -473,7 +455,7 @@ p_inset <- ggdraw(p_br) +
 
 
 ```{r fig1-main-text,eval=TRUE,include=FALSE}
-f_imgtoggplot <- function(caminho_imagem, largura_px = 2000) {
+f_imgtoggplot <- \(caminho_imagem, largura_px = 2000){
   img <- image_read(caminho_imagem) %>% 
     image_trim() %>% 
     # Aumenta/padroniza a largura da imagem mantendo a proporção
@@ -482,6 +464,12 @@ f_imgtoggplot <- function(caminho_imagem, largura_px = 2000) {
   ggdraw() + draw_image(img)
 }
 # primeiro cobertura e depois 
+# parametros gráficos comuns
+vfacet_title_size <- 18
+vline_size <- 2
+vpoint_size <- 3
+vtext_size <- 18
+vtitle_size <- 20
 size_legtex <- 12
 lp <- list()
 # figura construida pela Tatiana e adaptada aqui:
@@ -515,10 +503,12 @@ lp[[1]] <- ggplot(mapping = aes(x, y)) +
     geom_hline(yintercept = 95, col = "darkred", linetype='dotted', linewidth=1)+
     geom_hline(yintercept = 50, col = "red", linetype='dotted', linewidth=1)+
     theme_bw()+
-    theme(legend.position = "top", axis.text=element_text(size=15),
+    theme(legend.position = "top", 
+          axis.text=element_text(size=15),
           axis.text.x = element_text(size=12),
           legend.text = element_text(size=13),
           axis.title.y = element_text(size=15),
+          plot.title = element_text(size = vtitle_size),
           legend.title = element_text(size=size_legtex),
           legend.margin  = margin(0, 0, 0, 0),
           legend.box.margin = margin(0, 0, 0, 0),
@@ -539,7 +529,7 @@ lp[[2]] <- dfwis_cir %>%
     coord_sf(expand = FALSE) +
     theme_bw() +
     theme(
-      legend.position="bottom",
+      legend.position="top",
       panel.grid = element_blank(),
       legend.title = element_text(size=size_legtex),
       legend.margin  = margin(0, 0, 0, 0),
@@ -547,27 +537,28 @@ lp[[2]] <- dfwis_cir %>%
       legend.spacing = unit(0, "pt"),
       strip.background = element_rect(fill = "white"),
       strip.text = element_text(face = "bold",
-                                size = 12,
+                                size = vfacet_title_size,
                                 margin = margin()),
-      text = element_text(size=10)
+      text = element_text(size=vtext_size)
     )
 # lp[[3]] <- f_imgtoggplot("dados/ForeScan/Indicadores/wis_base.png")
 full_base <- ldf_fig2[["wis"]]
 lp[[3]] <- full_base %>%
     ggplot(aes(x = base, y= components, fill = WIS)) +
-    geom_bar(stat = "identity")+
+    geom_bar(stat = "identity") +
     scale_fill_manual("Decomposition WIS",values=c('pink','lightpink3','lightpink4'))+
     theme_bw()+
     scale_x_discrete(guide = guide_axis(angle = 45))+
     theme(legend.position = "top", 
           legend.title = element_blank(),
+          plot.title = element_text(size = vtitle_size),
+          axis.text=element_text(size=15),
+          axis.text.x = element_text(size=12),
+          axis.title.y = element_text(size=15),
           legend.margin  = margin(0, 0, 0, 0),
           legend.box.margin = margin(0, 0, 0, 0),
           legend.spacing = unit(0, "pt"),
-          axis.text=element_text(size=12), 
-          legend.text = element_text(size=size_legtex),
-          axis.title.y = element_text(size=13),
-          axis.text.x = element_text(size=12))+
+          legend.text = element_text(size=size_legtex))+
     labs(x="", y="Median WIS")
 lp[[4]] <- dfwis_cir %>% 
   select(dispersao:superprev) %>% 
@@ -587,7 +578,7 @@ lp[[4]] <- dfwis_cir %>%
     coord_sf(expand = FALSE) +
     theme_bw() +
     theme(
-      legend.position="bottom",
+      legend.position="top",
       panel.grid = element_blank(),
       legend.title = element_text(size=size_legtex),
       legend.margin  = margin(0, 0, 0, 0),
@@ -595,12 +586,72 @@ lp[[4]] <- dfwis_cir %>%
       legend.spacing = unit(0, "pt"),
       strip.background = element_rect(fill = "white"),
       strip.text = element_text(face = "bold",
-                                size = 12,
+                                size = vfacet_title_size,
                                 margin = margin()),
-      text = element_text(size=10)
+      text = element_text(size=vtext_size)
+    )
+####### inclusão dos novos gráficos #######
+#@-- por sepi --@#
+lp[[5]] <- base %>% 
+    ggplot(aes(x = base, y=MAE)) +
+    geom_bar(stat = "identity",color="#9ED7E6") +
+    theme_bw()+
+    scale_x_discrete(guide = guide_axis(angle = 45)) +
+    theme(legend.position = "top", 
+          plot.title = element_text(size = vtitle_size),
+          legend.title = element_blank(),
+          legend.margin  = margin(0, 0, 0, 0),
+          legend.box.margin = margin(0, 0, 0, 0),
+          legend.spacing = unit(0, "pt"),
+          axis.text=element_text(size=12), 
+          legend.text = element_text(size=size_legtex),
+          axis.title.y = element_text(size=13),
+          axis.text.x = element_text(size=12)) +
+    labs(x="", y="Median MAE")
+
+#@-- por CIR --@#
+lp[[6]] <- dfwis_cir %>% 
+    mutate(facetlab="MAE") %>% 
+    ggplot(aes(fill=MAE)) +
+    geom_sf(color="#9ED7E6") +
+    scale_fill_gradient(
+      low = "white", 
+      high = "black",
+      name = "median MAE"
+      ) +
+    facet_wrap(~facetlab,nrow=1) +
+    # 1. Ajuste dos eixos para não ter sobras (margens zeradas)
+    coord_sf(expand = FALSE) +
+    annotation_scale(location = "bl", width_hint = 0.3, style = "ticks") +
+    annotation_north_arrow(
+        location = "tr", 
+        which_north = "true",
+        pad_x = unit(0.15, "in"), 
+        pad_y = unit(0.15, "in"),
+        height = unit(0.8, "cm"), 
+        width = unit(0.8, "cm"),
+        style = north_arrow_orienteering(
+          fill = c("black", "white"),
+          line_col = "black",
+          text_size = 7
+        )
+      ) +
+    theme_bw() +
+    theme(
+      legend.position="top",
+      panel.grid = element_blank(),
+      legend.title = element_text(size=size_legtex),
+      legend.margin  = margin(0, 0, 0, 0),
+      legend.box.margin = margin(0, 0, 0, 0),
+      legend.spacing = unit(0, "pt"),
+      strip.background = element_rect(fill = "white"),
+      strip.text = element_text(face = "bold",
+                                size = vfacet_title_size,
+                                margin = margin()),
+      text = element_text(size=vtext_size)
     )
 #@--- estratégia nova ---@#
-names(lp) <- c("C","D","A","B") #,"E"
+names(lp) <- c("C","D","A","B","E","F") #,"E"
 f_img <- \(imgpath){
     vimg <- image_read(imgpath) %>%
         image_trim()
@@ -613,8 +664,11 @@ f_ggsave <- \(vname){
     }else if(vname=="B"){
         vw <- 21
         vh <- 6.5
-    }else{
+    }else if(vname=="D"){
         vw <- 14
+        vh <- 6.5
+    }else{
+        vw <- 7
         vh <- 6.5
     }
     p <- lp[[vname]] + ggtitle(paste0(vname,")"))
@@ -631,7 +685,7 @@ f_ggsave <- \(vname){
 lpath <- lapply(names(lp),f_ggsave)
 limg <- lapply(lpath,image_read)
 names(limg) <- names(lp)
-limg <- limg[LETTERS[1:4]]
+limg <- limg[LETTERS[1:6]]
 
 # --- Parâmetros globais ---
 W <- 3000          # largura total comum às duas linhas (pixels)
@@ -643,36 +697,102 @@ fit_cell <- function(img, vw, vh, bg = "white") {
   image_resize(img, geometry = paste0(vw, "x", vh))
   # Expande o canvas até width x height, centralizado, com padding
 }
+f_make_spacer <- \(img_referencia, width = 50){ # col_spacer <- f_make_spacer(lcols[[1]], width = 60)
+  h <- image_info(img_referencia)$height
+  image_blank(width = width, height = h, color = "white")
+}
+
 w_A <- round(W * 1/4)
 w_B <- round(W * 3/4)
-
+limg$A <- fit_cell(limg$A, w_A, H, bg)
+col_spacer <- f_make_spacer(limg$A,width = 25)
 row1 <- image_append(c(
-  fit_cell(limg$A, w_A, H, bg),
-  fit_cell(limg$B, w_B, H, bg)
+    limg$A,
+    col_spacer,
+    fit_cell(limg$B, w_B, H, bg)
 ), stack = FALSE)
 
 # --- Linha 2: C (1/4) + D (2/4) + E (1/4) ---
 w_C <- round(W * 1/4)
 w_D <- round(W * 2/4)
-#w_E <- round(W * 1/4)
+w_E <- round(W * 1/4)
 
+limg$C <- fit_cell(limg$C, w_C, H, bg)
+col_spacer <- f_make_spacer(limg$C,width = 25)
 row2 <- image_append(c(
-  fit_cell(limg$C, w_C, H, bg),
-  fit_cell(limg$D, w_D, H, bg) #,
-  # image_extent(img, geometry = paste0(vw, "x", vh),
-  #               gravity = "center", color = bg)
-  #image_resize(limg$E,"x673")
+  limg$C,
+  col_spacer,
+  fit_cell(limg$D, w_D, H, bg)
 ), stack = FALSE)
 
-fig_final <- image_append(c(row1, row2), stack = TRUE) %>% 
+
+limg$E <- fit_cell(limg$E, w_E, H, bg)
+col_spacer <- f_make_spacer(limg$E,width = 25)
+row3 <- image_append(c(
+    limg$E,
+    col_spacer,
+    fit_cell(limg[["F"]], w_E, H, bg)
+))
+fig_final <- image_append(c(row1, row2, row3), stack = TRUE) %>% 
     image_trim()
 image_write(image = fig_final,path = "figuras_e_relatorios/fig1_md_perf.png")
+#@------ criação e adequação para inserção -----@#
+library(scales) # Para formatação do eixo X e Y
+dfcount_gt[dfcount_gt$DT_SIN_PRI==max(dfcount_gt$DT_SIN_PRI),"DT_SIN_PRI"] <- 
+    pull(dfcount_gt[nrow(dfcount_gt)-1,],DT_SIN_PRI) + lubridate::weeks(1)
+p <- dfcount_gt %>% 
+    ungroup() %>% 
+    mutate(facetlab = "Total number of cases in the consolidated data") %>% 
+    ggplot(aes(x = DT_SIN_PRI, y = n)) +
+    geom_col(fill = "#184E77", color = "white", linewidth = 0.2, width = 6) +
+    scale_x_date(expand = FALSE,guide = guide_axis(angle = 45)) +
+    scale_y_continuous(
+        labels = label_number(big.mark = ".", decimal.mark = ","),
+        expand = expansion(mult = c(0, 0.05))
+        ) +
+    labs(x="",y="") +
+    ggtitle("G)") +
+    facet_wrap(~facetlab) +
+    theme_bw() +
+    theme(legend.margin = margin(t = -5, b = 0, unit = "pt"),
+          legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
+          legend.box.spacing = unit(0, "pt"),
+          plot.title = element_text(size = vtitle_size),
+          strip.text = element_text(size=vfacet_title_size,
+                                    margin = margin(),face="bold"),
+          strip.background = element_rect(fill="white",colour = "black"),
+          text = element_text(size=vtext_size)
+          )
+vw <- 14
+vh <- 6.5
+vpath <- tempfile(fileext = ".png")
+ggsave(filename = vpath,
+       plot=p,
+       width=vw,
+       height = vh,
+       dpi=200)
+img_insert <- image_read(vpath) %>% 
+    image_trim
+info_alvo <- image_info( fit_cell(limg$D, w_D, H, bg) )
+geometria <- sprintf("%dx%d!", floor(info_alvo$width*0.975), info_alvo$height)
+
+# Redimensiona img_insert para as dimensões exatas
+img_insert <- image_resize(img_insert, geometria)
+
+#
+img_resultado <- image_composite(
+  image = fig_final,
+  composite_image = img_insert,
+  gravity = "southeast",
+  offset = "+2+2"
+)
+image_write(image = img_resultado,path = "figuras_e_relatorios/fig1_md_perf.png")
 ```
 
 
-Alternativamente, não haverá a figura 2 atual de validação dos modelos 
+Alternativamente, não haverá a figura fig1_md_perf.png atual de validação dos modelos 
 
-```{r}
+```{r figura com esquema de trabalho}
 # setup inicial da imagem criado no power point:
 f_img <- \(imgpath){
     vimg <- image_read(imgpath) %>%
@@ -805,7 +925,7 @@ image_write(img_final,
 
 
 
-## Figure 2 from main text: SaTScan-based risk classification of CIRs
+## Figure ABC_final from main text: SaTScan-based risk classification of CIRs
 
 ```{r fig2, include=FALSE,eval=TRUE ,fig.width=10,fig.height=14}
 # parametros gráficos comuns
@@ -944,31 +1064,6 @@ lp[[2]] <- wrap_elements(
     )
 
 # o painel com todos os casos para contextualização
-library(scales) # Para formatação do eixo X e Y
-dfcount_gt[dfcount_gt$DT_SIN_PRI==max(dfcount_gt$DT_SIN_PRI),"DT_SIN_PRI"] <- 
-    pull(dfcount_gt[nrow(dfcount_gt)-1,],DT_SIN_PRI) + lubridate::weeks(1)
-lp[[3]] <- dfcount_gt %>% 
-    ungroup() %>% 
-    mutate(facetlab = "Total number of cases in the consolidated data") %>% 
-    ggplot(aes(x = DT_SIN_PRI, y = n)) +
-    geom_col(fill = "#184E77", color = "white", linewidth = 0.2, width = 6) +
-    scale_x_date(expand = FALSE) +
-    scale_y_continuous(
-        labels = label_number(big.mark = ".", decimal.mark = ","),
-        expand = expansion(mult = c(0, 0.05))
-        ) +
-    labs(x="",y="") +
-    facet_wrap(~facetlab) +
-    theme_bw() +
-    theme(legend.margin = margin(t = -5, b = 0, unit = "pt"),
-          legend.box.margin = margin(t = -8, b = 0, unit = "pt"),
-          legend.box.spacing = unit(0, "pt"),
-          strip.text = element_text(size=vfacet_title_size,
-                                    margin = margin(),face="bold"),
-          strip.background = element_rect(fill="white",colour = "black"),
-          text = element_text(size=vtext_size)
-          )
-
 #@--------- as métricas de confusão ------@# 
 #
 dfp <- dfsumm2 %>% 
@@ -1223,7 +1318,7 @@ lcols_spaced <- list(
 )
 img_final <- Reduce("f_append",lcols_spaced) %>% 
     image_trim
-image_write(img_final,path="figuras_e_relatorios/ABC_draft.png")
+image_write(img_final,path="figuras_e_relatorios/ABC_final.png")
 
 #-----------------
 # limg <- lapply(lpath,\(li){
@@ -1265,20 +1360,20 @@ library(corrplot)
 library(magick)
 # exemplo:
 # corrplot(M, method = 'ellipse', order = 'AOE', type = 'upper')
-dfp <- df_ad %>% 
-    group_by(data) %>% 
-    summarise(SIG = sum(casos==1)/63,nSIG=sum(casos==0)/63) %>% 
-    pivot_longer(-data) %>% 
-    mutate(name = factor(name,
-                         levels=c("SIG","nSIG"),
-                         labels=c(
-                             "RR > 1",
-                             "RR ≤ 1")
-                         )
-           ) %>% 
-    filter(name=="RR > 1") %>% 
-    rename(propRR = value) %>% 
-    select(-name)
+# dfp <- df_ad %>% 
+#     group_by(data) %>% 
+#     summarise(SIG = sum(casos==1)/63,nSIG=sum(casos==0)/63) %>% 
+#     pivot_longer(-data) %>% 
+#     mutate(name = factor(name,
+#                          levels=c("SIG","nSIG"),
+#                          labels=c(
+#                              "RR > 1",
+#                              "RR ≤ 1")
+#                          )
+#            ) %>% 
+#     filter(name=="RR > 1") %>% 
+#     rename(propRR = value) %>% 
+#     select(-name)
 
 dfp_sepi <- inner_join(
     dfwis_sepi %>% select(-n),
@@ -1290,8 +1385,7 @@ dfp_sepi <- inner_join(
     relocate(method,.after="base") %>% 
     mutate(method=droplevels(method)) %>% 
     rename(TPR=TruePositiveRate,FPR=FalsePositiveRate) %>% 
-    select(base:MAE,TPR:FPR,PPV:NPV,Youden) %>% 
-    inner_join(y=.,x=dfp,by=c("data"="base"))
+    select(base:MAE,TPR:FPR,PPV:NPV,Youden)
 
 f_gsub <- \(vc){
   gsub("^TP$","True Positive (TP)",vc) %>% 
@@ -1318,22 +1412,22 @@ f_padname <- \(mi){
 f_corrplot <- \(vtitle,vw=10,vh=10){
     #
     pred_vars <- c("WIS", "Spread", "Underprediction", "Overprediction", 
-                   "Pred. Int. 50%","Pred. Int. 95%","MAE","Prop. RR > 1")
-    class_vars <- c("TPR", "FPR","PPV", "NPV","Youden","Prop. RR > 1")
+                   "Pred. Int. 50%","Pred. Int. 95%","MAE")
+    class_vars <- c("TPR", "FPR","PPV", "NPV","Youden")
     #
     dfcor <- filter(dfp_sepi,method==vtitle) %>% 
         as.data.frame()
     #
-    mcor <- cor(select(dfcor,-data,-method),method = "spearman")
-    p_mat <- cor.mtest(select(dfcor,-data,-method), method = "spearman")$p
+    mcor <- cor(select(dfcor,-base,-method),method = "spearman")
+    p_mat <- cor.mtest(select(dfcor,-base,-method), method = "spearman")$p
     #
     mcor <- f_padname(mcor)
     mcor <- mcor[pred_vars,class_vars]
-    mcor["Prop. RR > 1","Prop. RR > 1"] <- NA
+    # mcor["Prop. RR > 1","Prop. RR > 1"] <- NA
     p_mat <- f_padname(p_mat)
     p_mat <- p_mat[pred_vars,class_vars]
-    p_mat["Prop. RR > 1","Prop. RR > 1"] <- NA
-    text_colors <- ifelse(is.na(p_mat) | p_mat >= 0.05, "white", "black")
+    # p_mat["Prop. RR > 1","Prop. RR > 1"] <- NA
+    text_colors <- ifelse(is.na(p_mat) | p_mat >= 0.05, "#97978f", "black")
     #
     vpath <- tempfile(fileext = ".png")
     png(
@@ -1354,7 +1448,9 @@ f_corrplot <- \(vtitle,vw=10,vh=10){
     return(vpath)
 }
 lpath <- lapply(levels(dfp_sepi$method),f_corrplot)
-names(lpath) <- levels(dfp_sepi$method)
+names(lpath) <- levels(dfp_sepi$method) %>% 
+    gsub("Standard Bayesian prediction","Std Median",.) %>% 
+    gsub("Moving average of Bayesian predictions","MA Median",.)
 limg <- lapply(names(lpath),\(li){
   #
   vpath <- lpath[[li]]  
@@ -1380,7 +1476,13 @@ limg <- lapply(names(lpath),\(li){
     image_trim()
   }
  )
-image_write(limg[[2]],
+col_spacer <- f_make_spacer(limg[[1]], width = 60)
+lgeral <- c(limg[[1]],col_spacer,limg[[2]])
+f_append <- \(x,y,vlog=FALSE){
+    image_append(c(x,y),stack = vlog)
+}
+img_final <- Reduce("f_append",lgeral)
+image_write(img_final,
             path = "figuras_e_relatorios/correlation_plot.png")
 # img_final <- image_append(do.call("c",limg),stack = FALSE)
 # image_write(img_final,path = "figuras_e_relatorios/correlation_plot.png")
@@ -1600,44 +1702,6 @@ ggsave(filename=paste0(getwd(),"/fig2.png"),
        height=10)
 p
 ```
-
-
-## gráfico extra: TPR e FPR ~ #RR>1_real
-
-```{r}
-dfp <- df_ad %>% 
-    group_by(data) %>% 
-    summarise(SIG = sum(casos==1),nSIG=sum(casos==0)) %>% 
-    pivot_longer(-data) %>% 
-    mutate(name = factor(name,
-                         levels=c("SIG","nSIG"),
-                         labels=c(
-                             "RR > 1",
-                             "RR ≤ 1")
-                         )
-           ) %>% 
-    filter(name=="RR > 1") %>% 
-    rename(RRmaior1 = value) %>% 
-    select(-name)
-dfp <- inner_join(
-    dfp,
-    select(dfsumm2,contains("Rate"),data:method)
-    ) %>% 
-    pivot_longer(contains("Rate")) %>% 
-    mutate(
-        name=case_when(
-            grepl("True",name) ~ "TPR",
-            grepl("False",name) ~ "FPR"),
-        name=factor(name,levels=c("TPR","FPR")),
-        RRmaior1=RRmaior1/63
-        )
-dfp %>% 
-    ggplot(aes(x=RRmaior1,y=value)) +
-    geom_point() +
-    geom_smooth(se=FALSE,method="lm") +
-    facet_grid(method~name)
-```
-
 
 
 
